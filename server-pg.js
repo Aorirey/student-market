@@ -9,15 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS для всех источников
-app.use(cors({
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-// Обработка preflight запросов
-app.options('*', cors());
+app.use(cors());
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
