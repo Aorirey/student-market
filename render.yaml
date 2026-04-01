@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: student-market
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DB_MODE
+        value: postgres
+      - key: DATABASE_URL
+        fromDatabase:
+          name: student-db
+          property: connectionString
+
+databases:
+  - name: student-db
+    databaseName: studentmarket
+    plan: free
