@@ -1,6 +1,9 @@
 // --- JAVASCRIPT ЛОГИКА ---
 
-const API_URL = 'http://localhost:3000/api';
+// Автоматическое определение API_URL
+const API_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:3000/api' 
+    : '/api';
 
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
