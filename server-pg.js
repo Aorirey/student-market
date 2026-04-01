@@ -20,13 +20,18 @@ async function initDatabase() {
     
     if (!databaseUrl) {
         console.error('❌ DATABASE_URL не указан!');
-        console.error('Создайте базу данных на https://neon.tech и добавьте DATABASE_URL в переменные окружения');
+        console.error('Создайте базу данных на https://supabase.com и добавьте DATABASE_URL в переменные окружения');
         process.exit(1);
     }
 
     pool = new Pool({
         connectionString: databaseUrl,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+        ssl: {
+            rejectUnauthorized: false
+        },
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000
     });
 
     try {
