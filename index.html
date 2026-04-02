@@ -176,6 +176,14 @@
                                 <option value="Разработка ПО">Разработка ПО</option>
                             </select>
                             <input type="number" id="product-price" placeholder="Цена (₽)">
+                            <label style="display: block; margin: 10px 0 5px; color: var(--text-secondary); font-size: 0.9rem;">Срок сдачи работы:</label>
+                            <select id="product-deadline" style="width: 100%; padding: 0.9rem 1.2rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main);">
+                                <option value="1">1 день</option>
+                                <option value="3">3 дня</option>
+                                <option value="7">7 дней</option>
+                                <option value="14">14 дней</option>
+                                <option value="30">30 дней</option>
+                            </select>
                         </div>
 
                         <!-- Поля для индивидуального запроса -->
@@ -318,11 +326,14 @@
             <span class="modal-close" onclick="closeUploadModal()">&times;</span>
             <h2>📤 Загрузка работы</h2>
             <input type="hidden" id="upload-purchase-id">
+            <input type="hidden" id="upload-seller-id">
+            <input type="hidden" id="upload-buyer-id">
             <div style="margin: 20px 0;">
                 <label style="display: block; margin-bottom: 10px;">Выберите файл:</label>
                 <input type="file" id="upload-file" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px;">
             </div>
-            <button class="btn-signup" onclick="uploadWorkFile()" style="width: 100%;">Загрузить файл</button>
+            <button class="btn-signup" onclick="uploadWorkFile()" style="width: 100%; margin-bottom: 10px;">Загрузить файл</button>
+            <button class="btn-contact-seller" onclick="contactSellerFromModal()" style="width: 100%;">📝 Написать покупателю</button>
         </div>
     </div>
 
@@ -366,6 +377,7 @@
                 <button class="btn-signup" onclick="confirmPurchase()" style="flex: 1;">Подтвердить</button>
                 <button class="btn-reject" onclick="closePurchaseConfirmModal()" style="flex: 1;">Отмена</button>
             </div>
+            <button class="btn-contact-seller" onclick="contactSellerFromConfirm()" style="width: 100%; margin-top: 15px;">💬 Написать продавцу</button>
         </div>
     </div>
 

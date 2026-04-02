@@ -29,8 +29,8 @@ async function initDatabase() {
 
     try {
         await pool.query(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, is_admin BOOLEAN DEFAULT false, is_blocked BOOLEAN DEFAULT false, rating REAL DEFAULT 0, review_count INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-        await pool.query(`CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, seller_id TEXT NOT NULL, seller_name TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
-        await pool.query(`CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, file_attached BOOLEAN DEFAULT false)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS products (id SERIAL PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, seller_id TEXT NOT NULL, seller_name TEXT NOT NULL, deadline TIMESTAMP, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS purchases (id SERIAL PRIMARY KEY, product_id INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, deadline TIMESTAMP, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, file_attached BOOLEAN DEFAULT false)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS work_files (id SERIAL PRIMARY KEY, purchase_id INTEGER NOT NULL, file_name TEXT NOT NULL, file_data TEXT NOT NULL, uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS reviews (id SERIAL PRIMARY KEY, purchase_id INTEGER NOT NULL, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, rating INTEGER NOT NULL, comment TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS custom_requests (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, budget INTEGER NOT NULL, requester_id TEXT NOT NULL, requester_name TEXT NOT NULL, file_name TEXT, file_data TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
@@ -121,29 +121,29 @@ app.delete('/api/users/:id', async (req, res) => {
 app.get('/api/products', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products WHERE status = 'approved'");
-        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, status: row.status, createdAt: row.created_at })));
+        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, deadline: row.deadline, status: row.status, createdAt: row.created_at })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/products/all', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products");
-        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, status: row.status, createdAt: row.created_at })));
+        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, deadline: row.deadline, status: row.status, createdAt: row.created_at })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/users/:id/products', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products WHERE seller_id = $1", [req.params.id]);
-        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, status: row.status, createdAt: row.created_at })));
+        res.json(result.rows.map(row => ({ id: row.id, title: row.title, category: row.category, discipline: row.discipline, price: row.price, sellerId: row.seller_id, sellerName: row.seller_name, deadline: row.deadline, status: row.status, createdAt: row.created_at })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/products', async (req, res) => {
     try {
-        const { title, category, discipline, price, sellerId, sellerName } = req.body;
-        const result = await pool.query(`INSERT INTO products (title, category, discipline, price, seller_id, seller_name, status) VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING id`, [title, category, discipline, price, sellerId, sellerName]);
-        res.status(201).json({ id: result.rows[0].id, title, category, discipline, price, sellerId, sellerName, status: 'pending' });
+        const { title, category, discipline, price, sellerId, sellerName, deadline } = req.body;
+        const result = await pool.query(`INSERT INTO products (title, category, discipline, price, seller_id, seller_name, deadline, status) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`, [title, category, discipline, price, sellerId, sellerName, deadline || null]);
+        res.status(201).json({ id: result.rows[0].id, title, category, discipline, price, sellerId, sellerName, deadline, status: 'pending' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -166,22 +166,22 @@ app.delete('/api/products/:id', async (req, res) => {
 app.get('/api/users/:id/purchases', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM purchases WHERE buyer_id = $1", [req.params.id]);
-        res.json(result.rows.map(row => ({ id: row.id, productId: row.product_id, title: row.title, price: row.price, buyerId: row.buyer_id, sellerId: row.seller_id, date: row.date, fileAttached: row.file_attached })));
+        res.json(result.rows.map(row => ({ id: row.id, productId: row.product_id, title: row.title, price: row.price, buyerId: row.buyer_id, sellerId: row.seller_id, deadline: row.deadline, date: row.date, fileAttached: row.file_attached })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/users/:id/sales', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM purchases WHERE seller_id = $1", [req.params.id]);
-        res.json(result.rows.map(row => ({ id: row.id, productId: row.product_id, title: row.title, price: row.price, buyerId: row.buyer_id, sellerId: row.seller_id, date: row.date, fileAttached: row.file_attached })));
+        res.json(result.rows.map(row => ({ id: row.id, productId: row.product_id, title: row.title, price: row.price, buyerId: row.buyer_id, sellerId: row.seller_id, deadline: row.deadline, date: row.date, fileAttached: row.file_attached })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/purchases', async (req, res) => {
     try {
-        const { productId, title, price, buyerId, sellerId } = req.body;
-        const result = await pool.query(`INSERT INTO purchases (product_id, title, price, buyer_id, seller_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [productId, title, price, buyerId, sellerId]);
-        res.status(201).json({ id: result.rows[0].id, productId, title, price, buyerId, sellerId });
+        const { productId, title, price, buyerId, sellerId, deadline } = req.body;
+        const result = await pool.query(`INSERT INTO purchases (product_id, title, price, buyer_id, seller_id, deadline) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, [productId, title, price, buyerId, sellerId, deadline || null]);
+        res.status(201).json({ id: result.rows[0].id, productId, title, price, buyerId, sellerId, deadline });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 

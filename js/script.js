@@ -626,11 +626,17 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         const category = document.getElementById('product-category').value;
         const discipline = document.getElementById('product-discipline').value;
         const price = parseInt(document.getElementById('product-price').value);
+        const deadlineDays = parseInt(document.getElementById('product-deadline').value);
 
         if (!title || !category || !discipline || !price) {
             showToast('Ошибка', 'Заполните все поля!', 'error');
             return;
         }
+
+        // Вычисляем дату дедлайна
+        const deadlineDate = new Date();
+        deadlineDate.setDate(deadlineDate.getDate() + deadlineDays);
+        const deadline = deadlineDate.toISOString();
 
         try {
             const response = await fetch(`${API_URL}/products`, {
@@ -642,7 +648,8 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
                     discipline,
                     price,
                     sellerId: currentUser.id,
-                    sellerName: currentUser.name
+                    sellerName: currentUser.name,
+                    deadline
                 })
             });
 
@@ -781,6 +788,7 @@ function openPurchaseConfirmModal(product, user) {
     modal.dataset.productPrice = product.price;
     modal.dataset.sellerId = product.sellerId;
     modal.dataset.userBalance = user.balance;
+    modal.dataset.deadline = product.deadline || '';
     
     modal.classList.add('active');
 }
@@ -811,6 +819,7 @@ async function confirmPurchase() {
     const productPrice = parseInt(modal.dataset.productPrice);
     const sellerId = modal.dataset.sellerId;
     const userBalance = parseInt(modal.dataset.userBalance);
+    const deadline = modal.dataset.deadline;
 
     try {
         // Обновляем баланс
@@ -834,11 +843,24 @@ async function confirmPurchase() {
                 title: productTitle,
                 price: productPrice,
                 buyerId: currentUser.id,
-                sellerId: sellerId
+                sellerId: sellerId,
+                deadline
             })
         });
 
         const purchase = await purchaseResponse.json();
+
+        // Создаём чат для покупки
+        await fetch(`${API_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                purchaseId: purchase.id,
+                senderId: sellerId,
+                receiverId: currentUser.id,
+                message: `Чат по заказу: ${productTitle}. Покупатель: ${currentUser.name}`
+            })
+        });
 
         // Создаём уведомление для продавца
         await fetch(`${API_URL}/notifications`, {
@@ -847,7 +869,7 @@ async function confirmPurchase() {
             body: JSON.stringify({
                 userId: sellerId,
                 title: 'Новая покупка!',
-                message: `Вашу работу "${productTitle}" купили!`,
+                message: `Вашу работу "${productTitle}" купили! Срок сдачи: ${new Date(deadline).toLocaleDateString()}`,
                 type: 'sale'
             })
         });
@@ -947,15 +969,43 @@ async function loadSalesData() {
 
                     let fileAction = '';
                     if (sale.fileAttached) {
-                        fileAction = `<button class="btn-replace" onclick="openUploadModal(${sale.id}, '${sale.buyerId}')">📝 Заменить файл</button>`;
+                        fileAction = `<button class="btn-replace" onclick="openUploadModal(${sale.id}, '${sale.buyerId}', '${sale.sellerId}')">📝 Заменить файл</button>`;
                     } else {
-                        fileAction = `<button class="btn-upload" onclick="openUploadModal(${sale.id}, '${sale.buyerId}')">📤 Прикрепить работу</button>`;
+                        fileAction = `<button class="btn-upload" onclick="openUploadModal(${sale.id}, '${sale.buyerId}', '${sale.sellerId}')">📤 Прикрепить работу</button>`;
+                    }
+
+                    // Вычисляем срок до конца сдачи
+                    let deadlineInfo = '';
+                    if (sale.deadline) {
+                        const deadlineDate = new Date(sale.deadline);
+                        const now = new Date();
+                        const diffTime = deadlineDate - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        let deadlineClass = 'deadline-normal';
+                        let deadlineText = '';
+                        
+                        if (diffDays < 0) {
+                            deadlineClass = 'deadline-expired';
+                            deadlineText = `⏰ Срок истёк ${Math.abs(diffDays)} дн. назад`;
+                        } else if (diffDays === 0) {
+                            deadlineClass = 'deadline-urgent';
+                            deadlineText = `⏰ Срок сдачи сегодня!`;
+                        } else if (diffDays <= 3) {
+                            deadlineClass = 'deadline-urgent';
+                            deadlineText = `⏰ Осталось ${diffDays} дн.`;
+                        } else {
+                            deadlineText = `⏰ Срок сдачи: ${deadlineDate.toLocaleDateString()} (${diffDays} дн.)`;
+                        }
+                        
+                        deadlineInfo = `<span class="product-deadline ${deadlineClass}">${deadlineText}</span>`;
                     }
 
                     item.innerHTML = `
                         <div class="info">
                             <span class="title">${sale.title}</span>
                             <span class="meta">${sale.price} ₽ • ${new Date(sale.date).toLocaleDateString()} • Покупатель: ${sale.buyerId}</span>
+                            ${deadlineInfo}
                         </div>
                         <div class="sale-actions">
                             ${fileAction}
@@ -1306,13 +1356,15 @@ async function unblockUser(userId) {
 // ==================== ФАЙЛЫ РАБОТ ====================
 
 // Открыть модальное окно загрузки файла
-function openUploadModal(purchaseId, buyerId) {
+function openUploadModal(purchaseId, buyerId, sellerId) {
     const modal = document.getElementById('upload-modal');
     if (!modal) {
         showToast('Ошибка', 'Модальное окно загрузки не найдено', 'error');
         return;
     }
     document.getElementById('upload-purchase-id').value = purchaseId;
+    document.getElementById('upload-seller-id').value = sellerId || currentUser.id;
+    document.getElementById('upload-buyer-id').value = buyerId;
     modal.classList.add('active');
 }
 
@@ -1323,6 +1375,26 @@ function closeUploadModal() {
         modal.classList.remove('active');
         document.getElementById('upload-file').value = '';
     }
+}
+
+// Написать покупателю из модального окна загрузки
+function contactSellerFromModal() {
+    const purchaseId = document.getElementById('upload-purchase-id').value;
+    const sellerId = document.getElementById('upload-seller-id').value;
+    const buyerId = document.getElementById('upload-buyer-id').value;
+    
+    closeUploadModal();
+    openChat(purchaseId, buyerId, 'Заказ');
+}
+
+// Написать продавцу из модального окна подтверждения
+function contactSellerFromConfirm() {
+    const modal = document.getElementById('confirm-purchase-modal');
+    const purchaseId = 'new'; // Новый чат будет создан после покупки
+    const sellerId = modal.dataset.sellerId;
+    const productTitle = modal.dataset.productTitle;
+    
+    showToast('Информация', 'Чат появится после подтверждения покупки', 'info');
 }
 
 // Загрузка файла работы
@@ -1463,26 +1535,33 @@ async function loadChatsList() {
     if (!currentUser) return;
 
     try {
-        const response = await fetch(`${API_URL}/chat/purchases/${currentUser.id}`);
-        const chats = await response.json();
+        // Загружаем все покупки и продажи пользователя
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchases = await purchasesResponse.json();
+        
+        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+        const sales = await salesResponse.json();
 
         const chatsListContent = document.getElementById('chats-list-content');
         chatsListContent.innerHTML = '';
 
-        if (chats.length === 0) {
+        // Объединяем покупки и продажи
+        const allChats = [
+            ...purchases.map(p => ({ ...p, type: 'buyer', counterpartName: 'Продавец' })),
+            ...sales.map(s => ({ ...s, type: 'seller', counterpartName: 'Покупатель' }))
+        ];
+
+        if (allChats.length === 0) {
             chatsListContent.innerHTML = '<p class="no-chats-message">У вас пока нет чатов<br>Совершите покупку или создайте запрос</p>';
             return;
         }
 
-        chats.forEach(chat => {
-            const isSeller = currentUser.id === chat.sellerId;
-            const counterpartName = chat.counterpartName || (isSeller ? 'Покупатель' : 'Продавец');
-            
+        allChats.forEach(chat => {
             const chatItem = document.createElement('div');
             chatItem.className = 'chat-item';
-            chatItem.onclick = () => openChat(chat.purchaseId, counterpartName, chat.title);
+            chatItem.onclick = () => openChat(chat.id, chat.counterpartName, chat.title);
             chatItem.innerHTML = `
-                <div class="chat-item-name">${counterpartName}</div>
+                <div class="chat-item-name">${chat.counterpartName}</div>
                 <div class="chat-item-title">${chat.title}</div>
             `;
             chatsListContent.appendChild(chatItem);

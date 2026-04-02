@@ -40,8 +40,8 @@ if (dbMode === 'postgres') {
         }
 
         db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
-        db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
-        db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0)`);
+        db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0)`);
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, rating INTEGER NOT NULL, comment TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS custom_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT, budget INTEGER NOT NULL, requesterId TEXT NOT NULL, requesterName TEXT NOT NULL, fileName TEXT, fileData TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -141,31 +141,31 @@ if (dbMode === 'postgres') {
     app.get('/api/products', (req, res) => {
         try {
             const result = db.exec("SELECT * FROM products WHERE status = 'approved'");
-            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], status: row[7], createdAt: row[8] })) : []);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], deadline: row[7], status: row[8], createdAt: row[9] })) : []);
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     app.get('/api/products/all', (req, res) => {
         try {
             const result = db.exec("SELECT * FROM products");
-            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], status: row[7], createdAt: row[8] })) : []);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], deadline: row[7], status: row[8], createdAt: row[9] })) : []);
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     app.get('/api/users/:id/products', (req, res) => {
         try {
             const result = db.exec(`SELECT * FROM products WHERE sellerId = '${req.params.id}'`);
-            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], status: row[7], createdAt: row[8] })) : []);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], title: row[1], category: row[2], discipline: row[3], price: row[4], sellerId: row[5], sellerName: row[6], deadline: row[7], status: row[8], createdAt: row[9] })) : []);
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     app.post('/api/products', (req, res) => {
         try {
-            const { title, category, discipline, price, sellerId, sellerName } = req.body;
-            db.run(`INSERT INTO products (title, category, discipline, price, sellerId, sellerName, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`, [title, category, discipline, price, sellerId, sellerName]);
+            const { title, category, discipline, price, sellerId, sellerName, deadline } = req.body;
+            db.run(`INSERT INTO products (title, category, discipline, price, sellerId, sellerName, deadline, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`, [title, category, discipline, price, sellerId, sellerName, deadline || null]);
             saveDatabase();
             const result = db.exec("SELECT last_insert_rowid()");
-            res.status(201).json({ id: result[0].values[0][0], title, category, discipline, price, sellerId, sellerName, status: 'pending' });
+            res.status(201).json({ id: result[0].values[0][0], title, category, discipline, price, sellerId, sellerName, deadline, status: 'pending' });
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
@@ -188,24 +188,24 @@ if (dbMode === 'postgres') {
     app.get('/api/users/:id/purchases', (req, res) => {
         try {
             const result = db.exec(`SELECT * FROM purchases WHERE buyerId = '${req.params.id}'`);
-            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], productId: row[1], title: row[2], price: row[3], buyerId: row[4], sellerId: row[5], date: row[6], fileAttached: Boolean(row[7]) })) : []);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], productId: row[1], title: row[2], price: row[3], buyerId: row[4], sellerId: row[5], deadline: row[6], date: row[7], fileAttached: Boolean(row[8]) })) : []);
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     app.get('/api/users/:id/sales', (req, res) => {
         try {
             const result = db.exec(`SELECT * FROM purchases WHERE sellerId = '${req.params.id}'`);
-            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], productId: row[1], title: row[2], price: row[3], buyerId: row[4], sellerId: row[5], date: row[6], fileAttached: Boolean(row[7]) })) : []);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], productId: row[1], title: row[2], price: row[3], buyerId: row[4], sellerId: row[5], deadline: row[6], date: row[7], fileAttached: Boolean(row[8]) })) : []);
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     app.post('/api/purchases', (req, res) => {
         try {
-            const { productId, title, price, buyerId, sellerId } = req.body;
-            db.run(`INSERT INTO purchases (productId, title, price, buyerId, sellerId) VALUES (?, ?, ?, ?, ?)`, [productId, title, price, buyerId, sellerId]);
+            const { productId, title, price, buyerId, sellerId, deadline } = req.body;
+            db.run(`INSERT INTO purchases (productId, title, price, buyerId, sellerId, deadline) VALUES (?, ?, ?, ?, ?, ?)`, [productId, title, price, buyerId, sellerId, deadline || null]);
             saveDatabase();
             const result = db.exec("SELECT last_insert_rowid()");
-            res.status(201).json({ id: result[0].values[0][0], productId, title, price, buyerId, sellerId });
+            res.status(201).json({ id: result[0].values[0][0], productId, title, price, buyerId, sellerId, deadline });
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
 

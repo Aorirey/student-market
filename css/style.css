@@ -2033,3 +2033,47 @@ footer {
     padding: 30px 20px;
     color: var(--text-secondary);
 }
+
+.btn-contact-seller {
+    background: var(--success);
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.95rem;
+}
+
+.btn-contact-seller:hover {
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.product-deadline {
+    display: block;
+    font-size: 0.85rem;
+    margin-top: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.deadline-normal {
+    color: var(--text-secondary);
+    background: rgba(37, 99, 235, 0.1);
+}
+
+.deadline-urgent {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+    font-weight: 600;
+}
+
+.deadline-expired {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+    font-weight: 600;
+}
