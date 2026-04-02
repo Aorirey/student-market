@@ -54,10 +54,21 @@ async function checkAuth() {
         } else {
             btnAdmin.style.display = 'none';
         }
+        
+        // Загружаем уведомления
+        loadNotifications();
+        
+        // Автообновление уведомлений каждые 5 секунд
+        if (notificationInterval) clearInterval(notificationInterval);
+        notificationInterval = setInterval(loadNotifications, 5000);
     } else {
         authButtons.style.display = 'flex';
         userMenu.style.display = 'none';
         btnAdmin.style.display = 'none';
+        if (notificationInterval) {
+            clearInterval(notificationInterval);
+            notificationInterval = null;
+        }
     }
 }
 
@@ -69,6 +80,13 @@ async function register() {
 
     if (!name || !email || !password) {
         showToast('Ошибка', 'Заполните все поля!', 'error');
+        return;
+    }
+
+    // Проверка email на валидность
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showToast('Ошибка', 'Введите корректный email адрес', 'error');
         return;
     }
 
@@ -309,11 +327,13 @@ function switchCabinetTab(type) {
 
     document.getElementById(`cabinet-${type}`).classList.add('active');
     event.target.classList.add('active');
-    
+
     if (type === 'sales') {
         loadSalesData();
     } else if (type === 'products') {
         loadProductsData();
+    } else if (type === 'chats') {
+        loadChatsList();
     } else if (type === 'add') {
         // Ничего не загружаем, просто показываем форму
     } else {
@@ -706,7 +726,7 @@ async function deleteProduct(productId) {
     }
 }
 
-// Покупка товара
+// Покупка товара (открывает модальное окно подтверждения)
 async function buyProduct(productId) {
     if (!currentUser) {
         openModal('login');
@@ -734,8 +754,67 @@ async function buyProduct(productId) {
             return;
         }
 
+        // Открываем модальное окно подтверждения
+        openPurchaseConfirmModal(product, user);
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка покупки', 'error');
+        console.error(error);
+    }
+}
+
+// Открыть модальное окно подтверждения покупки
+function openPurchaseConfirmModal(product, user) {
+    const modal = document.getElementById('confirm-purchase-modal');
+    if (!modal) {
+        showToast('Ошибка', 'Модальное окно подтверждения не найдено', 'error');
+        return;
+    }
+    
+    document.getElementById('confirm-product-title').textContent = product.title;
+    document.getElementById('confirm-product-price').textContent = product.price;
+    document.getElementById('confirm-user-balance').textContent = user.balance;
+    document.getElementById('confirm-balance-after').textContent = user.balance - product.price;
+    
+    // Сохраняем данные для последующего подтверждения
+    modal.dataset.productId = product.id;
+    modal.dataset.productTitle = product.title;
+    modal.dataset.productPrice = product.price;
+    modal.dataset.sellerId = product.sellerId;
+    modal.dataset.userBalance = user.balance;
+    
+    modal.classList.add('active');
+}
+
+// Закрыть модальное окно подтверждения покупки
+function closePurchaseConfirmModal() {
+    const modal = document.getElementById('confirm-purchase-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        delete modal.dataset.productId;
+        delete modal.dataset.productTitle;
+        delete modal.dataset.productPrice;
+        delete modal.dataset.sellerId;
+        delete modal.dataset.userBalance;
+    }
+}
+
+// Подтверждение покупки
+async function confirmPurchase() {
+    const modal = document.getElementById('confirm-purchase-modal');
+    if (!modal || !modal.dataset.productId) {
+        showToast('Ошибка', 'Данные покупки не найдены', 'error');
+        return;
+    }
+
+    const productId = parseInt(modal.dataset.productId);
+    const productTitle = modal.dataset.productTitle;
+    const productPrice = parseInt(modal.dataset.productPrice);
+    const sellerId = modal.dataset.sellerId;
+    const userBalance = parseInt(modal.dataset.userBalance);
+
+    try {
         // Обновляем баланс
-        const newBalance = user.balance - product.price;
+        const newBalance = userBalance - productPrice;
         const updateBalanceResponse = await fetch(`${API_URL}/users/${currentUser.id}/balance`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -747,20 +826,38 @@ async function buyProduct(productId) {
         sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
 
         // Создаём покупку
-        await fetch(`${API_URL}/purchases`, {
+        const purchaseResponse = await fetch(`${API_URL}/purchases`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                productId: product.id,
-                title: product.title,
-                price: product.price,
+                productId: productId,
+                title: productTitle,
+                price: productPrice,
                 buyerId: currentUser.id,
-                sellerId: product.sellerId
+                sellerId: sellerId
             })
         });
 
+        const purchase = await purchaseResponse.json();
+
+        // Создаём уведомление для продавца
+        await fetch(`${API_URL}/notifications`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: sellerId,
+                title: 'Новая покупка!',
+                message: `Вашу работу "${productTitle}" купили!`,
+                type: 'sale'
+            })
+        });
+
+        closePurchaseConfirmModal();
         showSuccessNotification(newBalance);
         checkAuth();
+        
+        // Уведомление о пути к товару
+        showToast('Покупка успешна!', 'Товар доступен в Личном кабинете → вкладка "Покупатель"', 'success', 5000);
     } catch (error) {
         showToast('Ошибка', 'Ошибка покупки', 'error');
         console.error(error);
@@ -1354,6 +1451,346 @@ async function submitReview() {
         console.error(error);
     }
 }
+
+// ==================== ЧАТЫ ====================
+
+let currentChatPurchaseId = null;
+let currentChatInterval = null;
+let selectedFileForChat = null;
+
+// Загрузка списка чатов
+async function loadChatsList() {
+    if (!currentUser) return;
+
+    try {
+        const response = await fetch(`${API_URL}/chat/purchases/${currentUser.id}`);
+        const chats = await response.json();
+
+        const chatsListContent = document.getElementById('chats-list-content');
+        chatsListContent.innerHTML = '';
+
+        if (chats.length === 0) {
+            chatsListContent.innerHTML = '<p class="no-chats-message">У вас пока нет чатов<br>Совершите покупку или создайте запрос</p>';
+            return;
+        }
+
+        chats.forEach(chat => {
+            const isSeller = currentUser.id === chat.sellerId;
+            const counterpartName = chat.counterpartName || (isSeller ? 'Покупатель' : 'Продавец');
+            
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.onclick = () => openChat(chat.purchaseId, counterpartName, chat.title);
+            chatItem.innerHTML = `
+                <div class="chat-item-name">${counterpartName}</div>
+                <div class="chat-item-title">${chat.title}</div>
+            `;
+            chatsListContent.appendChild(chatItem);
+        });
+    } catch (error) {
+        console.error('Ошибка загрузки чатов:', error);
+    }
+}
+
+// Открытие чата
+async function openChat(purchaseId, counterpartName, purchaseTitle) {
+    currentChatPurchaseId = purchaseId;
+    
+    document.getElementById('chat-list').style.display = 'block';
+    document.getElementById('chat-window').style.display = 'flex';
+    document.getElementById('chat-with-name').textContent = `${counterpartName} (${purchaseTitle})`;
+    
+    // Загружаем сообщения
+    await loadChatMessages();
+    
+    // Автообновление каждые 3 секунды
+    if (currentChatInterval) clearInterval(currentChatInterval);
+    currentChatInterval = setInterval(loadChatMessages, 3000);
+}
+
+// Загрузка сообщений чата
+async function loadChatMessages() {
+    if (!currentChatPurchaseId) return;
+
+    try {
+        const response = await fetch(`${API_URL}/chat/${currentChatPurchaseId}`);
+        const messages = await response.json();
+
+        const messagesContainer = document.getElementById('chat-messages');
+        messagesContainer.innerHTML = '';
+
+        messages.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            const isSent = msg.senderId === currentUser.id;
+            messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
+            
+            let content = '';
+            if (msg.message) {
+                content += `<div>${msg.message}</div>`;
+            }
+            if (msg.fileName) {
+                const fileIcon = getFileIcon(msg.fileType);
+                content += `<div class="chat-message-file">${fileIcon} <a href="data:${msg.fileType || 'application/octet-stream'};base64,${msg.fileData}" download="${msg.fileName}">${msg.fileName}</a></div>`;
+            }
+            if (msg.createdAt) {
+                content += `<div class="chat-message-meta">${new Date(msg.createdAt).toLocaleString()}</div>`;
+            }
+            
+            messageDiv.innerHTML = content;
+            messagesContainer.appendChild(messageDiv);
+        });
+
+        // Прокрутка вниз
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } catch (error) {
+        console.error('Ошибка загрузки сообщений:', error);
+    }
+}
+
+// Закрыть окно чата
+function closeChatWindow() {
+    if (currentChatInterval) {
+        clearInterval(currentChatInterval);
+        currentChatInterval = null;
+    }
+    currentChatPurchaseId = null;
+    document.getElementById('chat-window').style.display = 'none';
+    document.getElementById('chat-list').style.display = 'block';
+    selectedFileForChat = null;
+    updateFilePreview();
+}
+
+// Отправка сообщения
+async function sendMessage() {
+    const messageInput = document.getElementById('chat-message-input');
+    const message = messageInput.value.trim();
+
+    if (!message && !selectedFileForChat) {
+        showToast('Ошибка', 'Введите сообщение или прикрепите файл', 'error');
+        return;
+    }
+
+    try {
+        // Получаем информацию о покупке для определения получателя
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchases = await purchasesResponse.json();
+        const purchase = purchases.find(p => p.id === currentChatPurchaseId);
+        
+        let receiverId;
+        if (purchase) {
+            receiverId = purchase.sellerId;
+        } else {
+            const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+            const sales = await salesResponse.json();
+            const sale = sales.find(s => s.id === currentChatPurchaseId);
+            receiverId = sale ? sale.buyerId : null;
+        }
+
+        if (!receiverId) {
+            showToast('Ошибка', 'Не удалось определить получателя', 'error');
+            return;
+        }
+
+        const payload = {
+            purchaseId: currentChatPurchaseId,
+            senderId: currentUser.id,
+            receiverId: receiverId,
+            message: message || null
+        };
+
+        if (selectedFileForChat) {
+            payload.fileName = selectedFileForChat.name;
+            payload.fileData = selectedFileForChat.data;
+            payload.fileType = selectedFileForChat.type;
+        }
+
+        await fetch(`${API_URL}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        messageInput.value = '';
+        selectedFileForChat = null;
+        updateFilePreview();
+        await loadChatMessages();
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка отправки сообщения', 'error');
+        console.error(error);
+    }
+}
+
+// Обработка нажатия Enter в чате
+function handleChatKeyPress(event) {
+    if (event.key === 'Enter') {
+        sendMessage();
+    }
+}
+
+// Выбор файла для чата
+function handleChatFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Проверка типа файла
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+        showToast('Ошибка', 'Разрешены только файлы: PDF, DOC, DOCX, PNG, JPG', 'error');
+        event.target.value = '';
+        return;
+    }
+
+    // Проверка размера (макс 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('Ошибка', 'Размер файла не должен превышать 10MB', 'error');
+        event.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        selectedFileForChat = {
+            name: file.name,
+            data: e.target.result.split(',')[1],
+            type: file.type
+        };
+        updateFilePreview();
+    };
+    reader.readAsDataURL(file);
+}
+
+// Обновление превью файла
+function updateFilePreview() {
+    const preview = document.getElementById('attached-file-preview');
+    if (selectedFileForChat) {
+        preview.style.display = 'flex';
+        preview.innerHTML = `
+            <span>📎 Прикреплён файл: ${selectedFileForChat.name}</span>
+            <button onclick="clearSelectedFile()">×</button>
+        `;
+    } else {
+        preview.style.display = 'none';
+    }
+}
+
+// Очистить выбранный файл
+function clearSelectedFile() {
+    selectedFileForChat = null;
+    document.getElementById('chat-file-input').value = '';
+    updateFilePreview();
+}
+
+// Иконка файла
+function getFileIcon(fileType) {
+    if (!fileType) return '📎';
+    if (fileType.includes('pdf')) return '📄';
+    if (fileType.includes('word')) return '📝';
+    if (fileType.includes('image')) return '🖼️';
+    return '📎';
+}
+
+// ==================== УВЕДОМЛЕНИЯ ====================
+
+let notificationInterval = null;
+
+// Загрузка уведомлений
+async function loadNotifications() {
+    if (!currentUser) return;
+
+    try {
+        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const notifications = await response.json();
+
+        const notificationsList = document.getElementById('notifications-list');
+        const notificationBadge = document.getElementById('notification-badge');
+
+        if (notifications.length === 0) {
+            notificationsList.innerHTML = '<p class="no-notifications">Нет уведомлений</p>';
+            notificationBadge.style.display = 'none';
+            return;
+        }
+
+        // Считаем непрочитанные
+        const unreadCount = notifications.filter(n => !n.isRead).length;
+        if (unreadCount > 0) {
+            notificationBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+            notificationBadge.style.display = 'flex';
+        } else {
+            notificationBadge.style.display = 'none';
+        }
+
+        notificationsList.innerHTML = '';
+        notifications.slice(0, 10).forEach(notification => {
+            const item = document.createElement('div');
+            item.className = `notification-item ${notification.isRead ? 'read' : 'unread'}`;
+            item.innerHTML = `
+                <div class="notification-title">${notification.title}</div>
+                <div class="notification-message">${notification.message}</div>
+                <div class="notification-time">${new Date(notification.createdAt).toLocaleString()}</div>
+            `;
+            if (!notification.isRead) {
+                item.onclick = () => markNotificationRead(notification.id);
+            }
+            notificationsList.appendChild(item);
+        });
+    } catch (error) {
+        console.error('Ошибка загрузки уведомлений:', error);
+    }
+}
+
+// Показать/скрыть уведомления
+function toggleNotifications() {
+    const dropdown = document.getElementById('notifications-dropdown');
+    if (dropdown.style.display === 'none') {
+        dropdown.style.display = 'block';
+        loadNotifications();
+    } else {
+        dropdown.style.display = 'none';
+    }
+}
+
+// Отметить уведомление прочитанным
+async function markNotificationRead(notificationId) {
+    try {
+        await fetch(`${API_URL}/notifications/${notificationId}/read`, {
+            method: 'PATCH'
+        });
+        loadNotifications();
+    } catch (error) {
+        console.error('Ошибка отметки уведомления:', error);
+    }
+}
+
+// Отметить все уведомления прочитанными
+async function markAllNotificationsRead() {
+    if (!currentUser) return;
+
+    try {
+        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const notifications = await response.json();
+
+        for (const notification of notifications) {
+            if (!notification.isRead) {
+                await fetch(`${API_URL}/notifications/${notification.id}/read`, {
+                    method: 'PATCH'
+                });
+            }
+        }
+        loadNotifications();
+    } catch (error) {
+        console.error('Ошибка отметки уведомлений:', error);
+    }
+}
+
+// Закрыть уведомления при клике вне
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('notifications-dropdown');
+    const button = document.getElementById('btn-notifications');
+    
+    if (dropdown && !dropdown.contains(event.target) && !button.contains(event.target)) {
+        dropdown.style.display = 'none';
+    }
+});
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 

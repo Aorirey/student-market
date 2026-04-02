@@ -45,6 +45,8 @@ if (dbMode === 'postgres') {
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, rating INTEGER NOT NULL, comment TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS custom_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT, budget INTEGER NOT NULL, requesterId TEXT NOT NULL, requesterName TEXT NOT NULL, fileName TEXT, fileData TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, senderId TEXT NOT NULL, receiverId TEXT NOT NULL, message TEXT, fileName TEXT, fileData TEXT, fileType TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, isRead INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         const adminExists = db.exec("SELECT * FROM users WHERE email = 'admin@studentmarket.ru'");
         if (adminExists.length === 0 || adminExists[0].values.length === 0) {
@@ -294,6 +296,57 @@ if (dbMode === 'postgres') {
     app.delete('/api/custom-requests/:id', (req, res) => {
         try { db.run(`DELETE FROM custom_requests WHERE id = ?`, [req.params.id]); saveDatabase(); res.json({ message: 'Запрос удалён' }); }
         catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    // API чат
+    app.get('/api/chat/:purchaseId', (req, res) => {
+        try {
+            const result = db.exec(`SELECT * FROM chat_messages WHERE purchaseId = ${req.params.purchaseId} ORDER BY createdAt ASC`);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], purchaseId: row[1], senderId: row[2], receiverId: row[3], message: row[4], fileName: row[5], fileData: row[6], fileType: row[7], createdAt: row[8] })) : []);
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.post('/api/chat', (req, res) => {
+        try {
+            const { purchaseId, senderId, receiverId, message, fileName, fileData, fileType } = req.body;
+            db.run(`INSERT INTO chat_messages (purchaseId, senderId, receiverId, message, fileName, fileData, fileType) VALUES (?, ?, ?, ?, ?, ?, ?)`, [purchaseId, senderId, receiverId, message || null, fileName || null, fileData || null, fileType || null]);
+            saveDatabase();
+            const result = db.exec("SELECT last_insert_rowid()");
+            res.status(201).json({ id: result[0].values[0][0], purchaseId, senderId, receiverId, message, fileName, fileData, fileType });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.get('/api/chat/purchases/:userId', (req, res) => {
+        try {
+            const result = db.exec(`SELECT DISTINCT p.id, p.title, u.name as counterpartName, p.sellerId, p.buyerId FROM purchases p JOIN users u ON (p.sellerId = u.id OR p.buyerId = u.id) WHERE (p.buyerId = '${req.params.userId}' OR p.sellerId = '${req.params.userId}') AND p.id IN (SELECT purchaseId FROM chat_messages)`);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ purchaseId: row[0], title: row[1], counterpartName: row[2], sellerId: row[3], buyerId: row[4] })) : []);
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    // API уведомления
+    app.get('/api/notifications/:userId', (req, res) => {
+        try {
+            const result = db.exec(`SELECT * FROM notifications WHERE userId = '${req.params.userId}' ORDER BY createdAt DESC`);
+            res.json(result.length > 0 ? result[0].values.map(row => ({ id: row[0], userId: row[1], title: row[2], message: row[3], type: row[4], isRead: Boolean(row[5]), createdAt: row[6] })) : []);
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.post('/api/notifications', (req, res) => {
+        try {
+            const { userId, title, message, type } = req.body;
+            db.run(`INSERT INTO notifications (userId, title, message, type) VALUES (?, ?, ?, ?)`, [userId, title, message, type]);
+            saveDatabase();
+            const result = db.exec("SELECT last_insert_rowid()");
+            res.status(201).json({ id: result[0].values[0][0], userId, title, message, type });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.patch('/api/notifications/:id/read', (req, res) => {
+        try {
+            db.run(`UPDATE notifications SET isRead = 1 WHERE id = ?`, [req.params.id]);
+            saveDatabase();
+            res.json({ message: 'Уведомление прочитано' });
+        } catch (error) { res.status(500).json({ error: error.message }); }
     });
 
     initDatabase().then(() => {

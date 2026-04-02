@@ -1718,3 +1718,318 @@ footer {
         opacity: 0;
     }
 }
+
+/* === СТИЛИ ДЛЯ ЧАТА === */
+.chats-container {
+    display: flex;
+    gap: 20px;
+    height: calc(100vh - 300px);
+    min-height: 500px;
+}
+
+.chat-list {
+    width: 300px;
+    background: var(--white);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow-y: auto;
+}
+
+.chat-list h3 {
+    margin-bottom: 15px;
+    color: var(--text-main);
+    font-size: 1.1rem;
+}
+
+.chat-item {
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.chat-item:hover {
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.chat-item.active {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: var(--primary-blue);
+}
+
+.chat-item-name {
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.chat-item-title {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.chat-window {
+    flex: 1;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-header {
+    padding: 15px 20px;
+    background: rgba(37, 99, 235, 0.05);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.btn-back-chat {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-main);
+    transition: all 0.2s;
+}
+
+.btn-back-chat:hover {
+    background: rgba(37, 99, 235, 0.1);
+}
+
+#chat-with-name {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 1.1rem;
+}
+
+.chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.chat-message {
+    max-width: 70%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    word-wrap: break-word;
+}
+
+.chat-message.sent {
+    align-self: flex-end;
+    background: var(--primary-blue);
+    color: white;
+}
+
+.chat-message.received {
+    align-self: flex-start;
+    background: var(--border-color);
+    color: var(--text-main);
+}
+
+.chat-message-meta {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+
+.chat-message-file {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.chat-message-file a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.chat-input-area {
+    padding: 15px 20px;
+    background: rgba(37, 99, 235, 0.05);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#chat-message-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    font-size: 0.95rem;
+    background: var(--white);
+    color: var(--text-main);
+}
+
+#chat-message-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+}
+
+.btn-attach-file {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    padding: 10px 14px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+
+.btn-attach-file:hover {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: var(--primary-blue);
+}
+
+.btn-send-message {
+    background: var(--primary-blue);
+    border: none;
+    padding: 10px 16px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: white;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+.btn-send-message:hover {
+    background: var(--dark-blue);
+    transform: scale(1.05);
+}
+
+.attached-file-preview {
+    padding: 10px 20px;
+    background: rgba(37, 99, 235, 0.05);
+    border-top: 1px solid var(--border-color);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.attached-file-preview button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--danger);
+    font-size: 1.2rem;
+    padding: 0;
+}
+
+.no-chats-message {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 40px 20px;
+}
+
+/* === СТИЛИ ДЛЯ УВЕДОМЛЕНИЙ === */
+.btn-notifications {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.btn-notifications:hover {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: var(--primary-blue);
+}
+
+.notifications-dropdown {
+    position: absolute;
+    top: 70px;
+    right: 20px;
+    width: 350px;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+}
+
+.notifications-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(37, 99, 235, 0.05);
+    border-radius: 12px 12px 0 0;
+}
+
+.notifications-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-main);
+}
+
+#notifications-list {
+    padding: 10px;
+}
+
+.notification-item {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: background 0.2s;
+    border: 1px solid var(--border-color);
+}
+
+.notification-item:hover {
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.notification-item.unread {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: var(--primary-blue);
+}
+
+.notification-item.read {
+    opacity: 0.7;
+}
+
+.notification-title {
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+}
+
+.notification-message {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.notification-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.no-notifications {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-secondary);
+}

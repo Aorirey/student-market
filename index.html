@@ -21,10 +21,22 @@
         <div class="user-menu" id="user-menu" style="display: none;">
             <div class="user-info">
                 <span class="user-name" id="user-name">Пользователь</span>
+                <button class="btn-notifications" id="btn-notifications" onclick="toggleNotifications()" title="Уведомления" style="position: relative; margin-right: 10px;">
+                    🔔
+                    <span id="notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;">0</span>
+                </button>
                 <button class="btn-cabinet" onclick="openCabinet()">Личный кабинет</button>
                 <button class="btn-admin" id="btn-admin" style="display: none;" onclick="openAdminPanel()">Админ-панель</button>
                 <button class="btn-logout" onclick="logout()">Выйти</button>
             </div>
+        </div>
+        <!-- Выпадающий список уведомлений -->
+        <div class="notifications-dropdown" id="notifications-dropdown" style="display: none;">
+            <div class="notifications-header">
+                <h3>Уведомления</h3>
+                <button onclick="markAllNotificationsRead()" style="font-size: 0.8rem; color: var(--primary-blue); cursor: pointer;">Отметить все прочитанными</button>
+            </div>
+            <div id="notifications-list"></div>
         </div>
     </header>
 
@@ -103,6 +115,7 @@
                     <button class="cabinet-tab active" onclick="switchCabinetTab('buyer')">Покупатель</button>
                     <button class="cabinet-tab" onclick="switchCabinetTab('sales')">Мои продажи</button>
                     <button class="cabinet-tab" onclick="switchCabinetTab('products')">Мои товары</button>
+                    <button class="cabinet-tab" onclick="switchCabinetTab('chats')">Чаты</button>
                     <button class="cabinet-tab" onclick="switchCabinetTab('add')">Добавить товар/запрос</button>
                 </div>
             </div>
@@ -144,7 +157,7 @@
                             <option value="product">Готовый товар</option>
                             <option value="custom">Индивидуальный запрос</option>
                         </select>
-                        
+
                         <!-- Поля для готового товара -->
                         <div id="product-fields">
                             <input type="text" id="product-title" placeholder="Название работы">
@@ -164,7 +177,7 @@
                             </select>
                             <input type="number" id="product-price" placeholder="Цена (₽)">
                         </div>
-                        
+
                         <!-- Поля для индивидуального запроса -->
                         <div id="custom-fields" style="display: none;">
                             <input type="text" id="custom-title" placeholder="Название запроса (например: Курсовая на тему...)">
@@ -173,10 +186,34 @@
                             <label style="display: block; margin: 10px 0 5px; color: var(--text-secondary); font-size: 0.9rem;">Прикрепить файл (методичку, пример):</label>
                             <input type="file" id="custom-file" style="width: 100%; padding: 0.9rem; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255, 255, 255, 0.4); color: var(--text-main);">
                         </div>
-                        
+
                         <button type="submit" class="btn-add-product" id="btn-submit-product">Добавить товар</button>
                     </form>
                     <p class="form-hint">⏳ Товар будет отправлен на модерацию администратору</p>
+                </div>
+            </div>
+
+            <!-- Вкладка чаты -->
+            <div id="cabinet-chats" class="cabinet-section">
+                <div class="chats-container">
+                    <div class="chat-list" id="chat-list">
+                        <h3>Мои чаты</h3>
+                        <div id="chats-list-content"></div>
+                    </div>
+                    <div class="chat-window" id="chat-window" style="display: none;">
+                        <div class="chat-header">
+                            <button class="btn-back-chat" onclick="closeChatWindow()">← Назад</button>
+                            <span id="chat-with-name"></span>
+                        </div>
+                        <div class="chat-messages" id="chat-messages"></div>
+                        <div class="chat-input-area">
+                            <input type="file" id="chat-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="display: none;" onchange="handleChatFileSelect(event)">
+                            <button class="btn-attach-file" onclick="document.getElementById('chat-file-input').click()" title="Прикрепить файл">📎</button>
+                            <input type="text" id="chat-message-input" placeholder="Введите сообщение..." onkeypress="handleChatKeyPress(event)">
+                            <button class="btn-send-message" onclick="sendMessage()">➤</button>
+                        </div>
+                        <div id="attached-file-preview" class="attached-file-preview" style="display: none;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -315,8 +352,25 @@
         </div>
     </div>
 
+    <!-- Модальное окно подтверждения покупки -->
+    <div class="modal" id="confirm-purchase-modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closePurchaseConfirmModal()">&times;</span>
+            <h2>✓ Подтверждение покупки</h2>
+            <p style="margin: 20px 0;">Вы собираетесь купить работу:</p>
+            <p style="font-weight: bold; font-size: 1.1em;" id="confirm-product-title"></p>
+            <p style="margin: 10px 0;">Цена: <strong style="color: var(--primary-color);" id="confirm-product-price"></strong> ₽</p>
+            <p style="margin: 10px 0;">Ваш баланс: <strong id="confirm-user-balance"></strong> ₽</p>
+            <p style="margin: 10px 0;">Остаток после покупки: <strong id="confirm-balance-after"></strong> ₽</p>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-signup" onclick="confirmPurchase()" style="flex: 1;">Подтвердить</button>
+                <button class="btn-reject" onclick="closePurchaseConfirmModal()" style="flex: 1;">Отмена</button>
+            </div>
+        </div>
+    </div>
+
     <footer>
-        <p>&copy; 2024 StudentMarket. Все права защищены.</p>
+        <p>&copy; 2026 StudentMarket. Все права защищены.</p>
     </footer>
 
     <script src="js/script.js"></script>

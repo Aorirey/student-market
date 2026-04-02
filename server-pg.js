@@ -34,6 +34,8 @@ async function initDatabase() {
         await pool.query(`CREATE TABLE IF NOT EXISTS work_files (id SERIAL PRIMARY KEY, purchase_id INTEGER NOT NULL, file_name TEXT NOT NULL, file_data TEXT NOT NULL, uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS reviews (id SERIAL PRIMARY KEY, purchase_id INTEGER NOT NULL, buyer_id TEXT NOT NULL, seller_id TEXT NOT NULL, rating INTEGER NOT NULL, comment TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS custom_requests (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, budget INTEGER NOT NULL, requester_id TEXT NOT NULL, requester_name TEXT NOT NULL, file_name TEXT, file_data TEXT, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (id SERIAL PRIMARY KEY, purchase_id INTEGER NOT NULL, sender_id TEXT NOT NULL, receiver_id TEXT NOT NULL, message TEXT, file_name TEXT, file_data TEXT, file_type TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS notifications (id SERIAL PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, is_read BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
 
         const adminExists = await pool.query("SELECT * FROM users WHERE email = 'admin@studentmarket.ru'");
         if (adminExists.rows.length === 0) {
@@ -266,6 +268,52 @@ app.patch('/api/custom-requests/:id/reject', async (req, res) => {
 app.delete('/api/custom-requests/:id', async (req, res) => {
     try { await pool.query("DELETE FROM custom_requests WHERE id = $1", [req.params.id]); res.json({ message: 'Запрос удалён' }); }
     catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// API чат
+app.get('/api/chat/:purchaseId', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM chat_messages WHERE purchase_id = $1 ORDER BY created_at ASC", [req.params.purchaseId]);
+        res.json(result.rows.map(row => ({ id: row.id, purchaseId: row.purchase_id, senderId: row.sender_id, receiverId: row.receiver_id, message: row.message, fileName: row.file_name, fileData: row.file_data, fileType: row.file_type, createdAt: row.created_at })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/chat', async (req, res) => {
+    try {
+        const { purchaseId, senderId, receiverId, message, fileName, fileData, fileType } = req.body;
+        const result = await pool.query(`INSERT INTO chat_messages (purchase_id, sender_id, receiver_id, message, file_name, file_data, file_type) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, [purchaseId, senderId, receiverId, message || null, fileName || null, fileData || null, fileType || null]);
+        res.status(201).json({ id: result.rows[0].id, purchaseId, senderId, receiverId, message, fileName, fileData, fileType });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/chat/purchases/:userId', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT DISTINCT p.id, p.title, u.name as counterpartName, p.seller_id as sellerId, p.buyer_id as buyerId FROM purchases p JOIN users u ON (p.seller_id = u.id OR p.buyer_id = u.id) WHERE (p.buyer_id = $1 OR p.seller_id = $1) AND p.id IN (SELECT purchase_id FROM chat_messages)`, [req.params.userId]);
+        res.json(result.rows.map(row => ({ purchaseId: row.id, title: row.title, counterpartName: row.counterpartName, sellerId: row.sellerId, buyerId: row.buyerId })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// API уведомления
+app.get('/api/notifications/:userId', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC", [req.params.userId]);
+        res.json(result.rows.map(row => ({ id: row.id, userId: row.user_id, title: row.title, message: row.message, type: row.type, isRead: row.is_read, createdAt: row.created_at })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/notifications', async (req, res) => {
+    try {
+        const { userId, title, message, type } = req.body;
+        const result = await pool.query(`INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4) RETURNING id`, [userId, title, message, type]);
+        res.status(201).json({ id: result.rows[0].id, userId, title, message, type });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+    try {
+        await pool.query("UPDATE notifications SET is_read = true WHERE id = $1", [req.params.id]);
+        res.json({ message: 'Уведомление прочитано' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 initDatabase().then(() => {
