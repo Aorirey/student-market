@@ -2113,7 +2113,24 @@ async function loadNotifications() {
 
     try {
         const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        
+        // Обработка ошибки 400/404
+        if (!response.ok) {
+            if (response.status === 400 || response.status === 404) {
+                // Пользователь не найден или некорректный ID
+                console.log('Уведомления не загружены: пользователь не найден');
+                return;
+            }
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+        
         const notifications = await response.json();
+
+        // Проверка что notifications это массив
+        if (!Array.isArray(notifications)) {
+            console.error('notifications не является массивом:', notifications);
+            return;
+        }
 
         const notificationsList = document.getElementById('notifications-list');
         const notificationBadge = document.getElementById('notification-badge');
@@ -2137,31 +2154,31 @@ async function loadNotifications() {
         notifications.slice(0, 10).forEach(notification => {
             const item = document.createElement('div');
             item.className = `notification-item ${notification.isRead ? 'read' : 'unread'}`;
-            
+
             // БЕЗОПАСНОСТЬ: Используем textContent
             const titleEl = document.createElement('div');
             titleEl.className = 'notification-title';
             titleEl.textContent = notification.title;
-            
+
             const messageEl = document.createElement('div');
             messageEl.className = 'notification-message';
             messageEl.textContent = notification.message;
-            
+
             const timeEl = document.createElement('div');
             timeEl.className = 'notification-time';
             timeEl.textContent = new Date(notification.createdAt).toLocaleString();
-            
+
             item.appendChild(titleEl);
             item.appendChild(messageEl);
             item.appendChild(timeEl);
-            
+
             if (!notification.isRead) {
                 item.onclick = () => markNotificationRead(notification.id);
             }
             notificationsList.appendChild(item);
         });
     } catch (error) {
-        console.error('Ошибка загрузки уведомлений:', error);
+        console.error('Ошибка загрузки уведомлений:', error.message);
     }
 }
 
