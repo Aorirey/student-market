@@ -3,7 +3,7 @@ services:
     name: student-market
     env: node
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: node server-pg.js
     envVars:
       - key: NODE_ENV
         value: production
