@@ -31,18 +31,20 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-            imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-            connectSrc: ["'self'", '*'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
-            mediaSrc: ["'self'", 'blob:'],
-            frameSrc: ["'none'"]
+            mediaSrc: ["'self'", 'blob:', 'data:'],
+            frameSrc: ["'none'"],
+            workerSrc: ["'self'", 'blob:']
         }
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: false
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // ============================================
@@ -276,7 +278,7 @@ const loginValidator = [
 ];
 
 const userIdValidator = [
-    param('id').trim().notEmpty().isLength({ max: 100 }),
+    param('id').trim().notEmpty().withMessage('ID обязателен'),
     validate
 ];
 
