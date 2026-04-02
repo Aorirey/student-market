@@ -16,23 +16,32 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // ============================================
+// ЛОГИРОВАНИЕ запросов (для отладки)
+// ============================================
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
+});
+
+// ============================================
 // БЕЗОПАСНОСТЬ: Заголовки безопасности (A05)
 // ============================================
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", 'data:', 'blob:'],
-            connectSrc: ["'self'"],
-            fontSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+            connectSrc: ["'self'", '*'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
             objectSrc: ["'none'"],
-            mediaSrc: ["'self'"],
+            mediaSrc: ["'self'", 'blob:'],
             frameSrc: ["'none'"]
         }
     },
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false
 }));
 
 // ============================================
