@@ -1,12 +1,50 @@
 // --- JAVASCRIPT ЛОГИКА ---
 
 // Автоматическое определение API_URL
-const API_URL = window.location.hostname === 'localhost' 
-    ? 'http://localhost:3000/api' 
+const API_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:3000/api'
     : '/api';
 
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
+
+// ============================================
+// БЕЗОПАСНОСТЬ: XSS защита (A08)
+// ============================================
+
+// Экранирование HTML для защиты от XSS
+function escapeHTML(str) {
+    if (!str) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+        '/': '&#x2F;'
+    };
+    return String(str).replace(/[&<>"'/]/g, char => map[char]);
+}
+
+// Безопасная вставка текста (защита от XSS)
+function setSafeText(element, text) {
+    const el = typeof element === 'string' ? document.getElementById(element) : element;
+    if (el) {
+        el.textContent = text;
+    }
+}
+
+// Валидация email
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+// Валидация числовых значений
+function isValidNumber(value, min = 1, max = 1000000) {
+    const num = typeof value === 'string' ? parseInt(value, 10) : value;
+    return !isNaN(num) && num >= min && num <= max;
+}
 
 // ==================== ТЕМНАЯ ТЕМА ====================
 
@@ -382,17 +420,48 @@ async function renderProducts(category, filterDiscipline) {
             const card = document.createElement('div');
             card.className = 'product-card';
             card.setAttribute('data-category', item.category);
-            card.innerHTML = `
-                <div>
-                    <span class="card-tag">${item.discipline}</span>
-                    <h3 class="card-title">${item.title}</h3>
-                    <p class="card-discipline">Продавец: <a href="#" class="seller-link" onclick="openSellerPage('${item.sellerId}', '${item.sellerName}', event)">${item.sellerName}</a></p>
-                </div>
-                <div class="card-footer">
-                    <span class="price">${item.price} ₽</span>
-                    <button class="buy-btn" onclick="buyProduct(${item.id})">Купить</button>
-                </div>
-            `;
+            
+            // БЕЗОПАСНОСТЬ: Используем textContent для пользовательских данных
+            const titleEl = document.createElement('h3');
+            titleEl.className = 'card-title';
+            titleEl.textContent = item.title;
+            
+            const sellerLink = document.createElement('a');
+            sellerLink.href = '#';
+            sellerLink.className = 'seller-link';
+            sellerLink.textContent = item.sellerName;
+            sellerLink.onclick = (e) => openSellerPage(item.sellerId, item.sellerName, e);
+            
+            const disciplineEl = document.createElement('p');
+            disciplineEl.className = 'card-discipline';
+            disciplineEl.innerHTML = 'Продавец: ';
+            disciplineEl.appendChild(sellerLink);
+            
+            const tagEl = document.createElement('span');
+            tagEl.className = 'card-tag';
+            tagEl.textContent = item.discipline;
+            
+            const priceEl = document.createElement('span');
+            priceEl.className = 'price';
+            priceEl.textContent = `${item.price} ₽`;
+            
+            const buyBtn = document.createElement('button');
+            buyBtn.className = 'buy-btn';
+            buyBtn.textContent = 'Купить';
+            buyBtn.onclick = () => buyProduct(item.id);
+            
+            const footer = document.createElement('div');
+            footer.className = 'card-footer';
+            footer.appendChild(priceEl);
+            footer.appendChild(buyBtn);
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.appendChild(tagEl);
+            contentDiv.appendChild(titleEl);
+            contentDiv.appendChild(disciplineEl);
+            
+            card.appendChild(contentDiv);
+            card.appendChild(footer);
             grid.appendChild(card);
         });
     } catch (error) {
@@ -442,23 +511,63 @@ async function renderCustomRequests(filter) {
             const card = document.createElement('div');
             card.className = 'product-card';
             card.setAttribute('data-category', 'custom');
-            
+
             const fileIcon = item.fileName ? '📎 ' : '';
             const hasFile = item.fileName ? '<span style="font-size: 0.8rem; color: var(--success);">• С файлом</span>' : '';
+
+            // БЕЗОПАСНОСТЬ: Используем textContent
+            const titleEl = document.createElement('h3');
+            titleEl.className = 'card-title';
+            titleEl.textContent = fileIcon + item.title;
             
-            card.innerHTML = `
-                <div>
-                    <span class="card-tag">Индивидуальный заказ</span>
-                    <h3 class="card-title">${fileIcon}${item.title}</h3>
-                    <p class="card-discipline">${item.description || 'Без описания'}</p>
-                    <p class="card-discipline">Заказчик: <a href="#" class="seller-link" onclick="openSellerPage('${item.requesterId}', '${item.requesterName}', event)">${item.requesterName}</a></p>
-                    ${hasFile}
-                </div>
-                <div class="card-footer">
-                    <span class="price">${item.budget} ₽</span>
-                    <button class="buy-btn" onclick="contactRequester('${item.requesterId}', '${item.title}')">Откликнуться</button>
-                </div>
-            `;
+            const descEl = document.createElement('p');
+            descEl.className = 'card-discipline';
+            descEl.textContent = item.description || 'Без описания';
+            
+            const requesterLink = document.createElement('a');
+            requesterLink.href = '#';
+            requesterLink.className = 'seller-link';
+            requesterLink.textContent = item.requesterName;
+            requesterLink.onclick = (e) => openSellerPage(item.requesterId, item.requesterName, e);
+            
+            const requesterEl = document.createElement('p');
+            requesterEl.className = 'card-discipline';
+            requesterEl.innerHTML = 'Заказчик: ';
+            requesterEl.appendChild(requesterLink);
+            
+            const tagEl = document.createElement('span');
+            tagEl.className = 'card-tag';
+            tagEl.textContent = 'Индивидуальный заказ';
+            
+            const priceEl = document.createElement('span');
+            priceEl.className = 'price';
+            priceEl.textContent = `${item.budget} ₽`;
+            
+            const contactBtn = document.createElement('button');
+            contactBtn.className = 'buy-btn';
+            contactBtn.textContent = 'Откликнуться';
+            contactBtn.onclick = () => contactRequester(item.requesterId, item.title);
+            
+            const footer = document.createElement('div');
+            footer.className = 'card-footer';
+            footer.appendChild(priceEl);
+            footer.appendChild(contactBtn);
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.appendChild(tagEl);
+            contentDiv.appendChild(titleEl);
+            contentDiv.appendChild(descEl);
+            contentDiv.appendChild(requesterEl);
+            if (item.fileName) {
+                const fileNote = document.createElement('span');
+                fileNote.style.fontSize = '0.8rem';
+                fileNote.style.color = 'var(--success)';
+                fileNote.textContent = '• С файлом';
+                contentDiv.appendChild(fileNote);
+            }
+            
+            card.appendChild(contentDiv);
+            card.appendChild(footer);
             grid.appendChild(card);
         });
     } catch (error) {
@@ -479,7 +588,7 @@ function contactRequester(requesterId, requestTitle) {
 // Открытие страницы продавца
 async function openSellerPage(sellerId, sellerName, event) {
     if (event) event.preventDefault();
-    
+
     // Скрываем все вкладки
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
@@ -487,87 +596,125 @@ async function openSellerPage(sellerId, sellerName, event) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    
+
     // Показываем страницу продавца
     document.getElementById('seller-page').classList.add('active');
-    
-    // Устанавливаем имя продавца
-    document.getElementById('seller-page-name').textContent = sellerName;
-    
+
+    // БЕЗОПАСНОСТЬ: Используем textContent
+    setSafeText('seller-page-name', sellerName);
+
     // Загружаем товары продавца
     try {
         const productsResponse = await fetch(`${API_URL}/products`);
         const products = await productsResponse.json();
         const sellerProducts = products.filter(p => p.sellerId === sellerId && p.status === 'approved');
-        
+
         const productsGrid = document.getElementById('seller-products-grid');
         productsGrid.innerHTML = '';
-        
+
         if (sellerProducts.length === 0) {
             productsGrid.innerHTML = '<p style="color: var(--text-secondary);">У продавца нет товаров</p>';
         } else {
             sellerProducts.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
-                card.innerHTML = `
-                    <div>
-                        <span class="card-tag">${item.discipline}</span>
-                        <h3 class="card-title">${item.title}</h3>
-                        <p class="card-discipline">${item.category}</p>
-                    </div>
-                    <div class="card-footer">
-                        <span class="price">${item.price} ₽</span>
-                        <button class="buy-btn" onclick="buyProduct(${item.id})">Купить</button>
-                    </div>
-                `;
+                
+                const titleEl = document.createElement('h3');
+                titleEl.className = 'card-title';
+                titleEl.textContent = item.title;
+                
+                const catEl = document.createElement('p');
+                catEl.className = 'card-discipline';
+                catEl.textContent = item.category;
+                
+                const tagEl = document.createElement('span');
+                tagEl.className = 'card-tag';
+                tagEl.textContent = item.discipline;
+                
+                const priceEl = document.createElement('span');
+                priceEl.className = 'price';
+                priceEl.textContent = `${item.price} ₽`;
+                
+                const buyBtn = document.createElement('button');
+                buyBtn.className = 'buy-btn';
+                buyBtn.textContent = 'Купить';
+                buyBtn.onclick = () => buyProduct(item.id);
+                
+                const footer = document.createElement('div');
+                footer.className = 'card-footer';
+                footer.appendChild(priceEl);
+                footer.appendChild(buyBtn);
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.appendChild(tagEl);
+                contentDiv.appendChild(titleEl);
+                contentDiv.appendChild(catEl);
+                
+                card.appendChild(contentDiv);
+                card.appendChild(footer);
                 productsGrid.appendChild(card);
             });
         }
-        
+
         // Загружаем отзывы о продавце
         const reviewsResponse = await fetch(`${API_URL}/users/${sellerId}/reviews`);
         const reviews = await reviewsResponse.json();
-        
+
         const reviewsList = document.getElementById('seller-reviews-list');
         reviewsList.innerHTML = '';
-        
+
         if (reviews.length === 0) {
             reviewsList.innerHTML = '<p style="color: var(--text-secondary);">Отзывов пока нет</p>';
         } else {
             reviews.forEach(review => {
                 const reviewItem = document.createElement('div');
                 reviewItem.className = 'review-item';
-                reviewItem.innerHTML = `
-                    <div class="review-header">
-                        <span class="review-stars">${'⭐'.repeat(review.rating)}</span>
-                        <span class="review-date">${new Date(review.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <p class="review-comment">${review.comment || 'Без комментария'}</p>
-                    <p class="review-buyer">Покупатель: ${review.buyerName || 'Аноним'}</p>
-                `;
+                
+                const header = document.createElement('div');
+                header.className = 'review-header';
+                
+                const stars = document.createElement('span');
+                stars.className = 'review-stars';
+                stars.textContent = '⭐'.repeat(review.rating);
+                
+                const date = document.createElement('span');
+                date.className = 'review-date';
+                date.textContent = new Date(review.createdAt).toLocaleDateString();
+                
+                header.appendChild(stars);
+                header.appendChild(date);
+                
+                const comment = document.createElement('p');
+                comment.className = 'review-comment';
+                comment.textContent = review.comment || 'Без комментария';
+                
+                const buyer = document.createElement('p');
+                buyer.className = 'review-buyer';
+                buyer.textContent = `Покупатель: ${review.buyerName || 'Аноним'}`;
+                
+                reviewItem.appendChild(header);
+                reviewItem.appendChild(comment);
+                reviewItem.appendChild(buyer);
                 reviewsList.appendChild(reviewItem);
             });
         }
-        
+
         // Загружаем данные продавца (рейтинг)
         const userResponse = await fetch(`${API_URL}/users/${sellerId}`);
         const user = await userResponse.json();
-        
+
         // Загружаем количество продаж
         const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`);
         const sales = await salesResponse.json();
-        
+
         // Вычисляем рейтинг из отзывов
-        const avgRating = reviews.length > 0 
+        const avgRating = reviews.length > 0
             ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
             : '--';
-        
-        document.getElementById('seller-page-rating').innerHTML = `
-            Рейтинг: <strong>${avgRating} ⭐</strong> | 
-            Продано работ: <strong>${sales.length}</strong> |
-            Товаров на сайте: <strong>${sellerProducts.length}</strong>
-        `;
-        
+
+        const ratingEl = document.getElementById('seller-page-rating');
+        ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${sales.length}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
+
     } catch (error) {
         console.error('Ошибка загрузки страницы продавца:', error);
     }
@@ -921,18 +1068,28 @@ async function loadCabinetData() {
                 // Кнопка оставить отзыв (если файла ещё нет или уже есть отзыв)
                 const reviewBtn = !purchase.fileAttached
                     ? ''
-                    : `<button class="btn-review" onclick="openReviewModal(${purchase.id}, '${purchase.sellerId}', '${purchase.title}')">✎ Оставить отзыв</button>`;
+                    : `<button class="btn-review" onclick="openReviewModal(${purchase.id}, '${escapeHTML(purchase.sellerId)}', ${JSON.stringify(escapeHTML(purchase.title))})">✎ Оставить отзыв</button>`;
 
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${purchase.title}</span>
-                        <span class="meta">${purchase.price} ₽ • ${new Date(purchase.date).toLocaleDateString()}</span>
-                    </div>
-                    <div class="purchase-actions">
-                        ${fileAction}
-                        ${reviewBtn}
-                    </div>
-                `;
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = purchase.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.textContent = `${purchase.price} ₽ • ${new Date(purchase.date).toLocaleDateString()}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'purchase-actions';
+                actionsDiv.innerHTML = fileAction + reviewBtn;
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 purchasesList.appendChild(item);
             }
         }
@@ -968,10 +1125,12 @@ async function loadSalesData() {
                     item.className = 'seller-product-item';
 
                     let fileAction = '';
+                    const escapedBuyerId = escapeHTML(sale.buyerId);
+                    const escapedSellerId = escapeHTML(sale.sellerId);
                     if (sale.fileAttached) {
-                        fileAction = `<button class="btn-replace" onclick="openUploadModal(${sale.id}, '${sale.buyerId}', '${sale.sellerId}')">📝 Заменить файл</button>`;
+                        fileAction = `<button class="btn-replace" onclick="openUploadModal(${sale.id}, '${escapedBuyerId}', '${escapedSellerId}')">📝 Заменить файл</button>`;
                     } else {
-                        fileAction = `<button class="btn-upload" onclick="openUploadModal(${sale.id}, '${sale.buyerId}', '${sale.sellerId}')">📤 Прикрепить работу</button>`;
+                        fileAction = `<button class="btn-upload" onclick="openUploadModal(${sale.id}, '${escapedBuyerId}', '${escapedSellerId}')">📤 Прикрепить работу</button>`;
                     }
 
                     // Вычисляем срок до конца сдачи
@@ -981,10 +1140,10 @@ async function loadSalesData() {
                         const now = new Date();
                         const diffTime = deadlineDate - now;
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        
+
                         let deadlineClass = 'deadline-normal';
                         let deadlineText = '';
-                        
+
                         if (diffDays < 0) {
                             deadlineClass = 'deadline-expired';
                             deadlineText = `⏰ Срок истёк ${Math.abs(diffDays)} дн. назад`;
@@ -997,20 +1156,35 @@ async function loadSalesData() {
                         } else {
                             deadlineText = `⏰ Срок сдачи: ${deadlineDate.toLocaleDateString()} (${diffDays} дн.)`;
                         }
-                        
+
                         deadlineInfo = `<span class="product-deadline ${deadlineClass}">${deadlineText}</span>`;
                     }
 
-                    item.innerHTML = `
-                        <div class="info">
-                            <span class="title">${sale.title}</span>
-                            <span class="meta">${sale.price} ₽ • ${new Date(sale.date).toLocaleDateString()} • Покупатель: ${sale.buyerId}</span>
-                            ${deadlineInfo}
-                        </div>
-                        <div class="sale-actions">
-                            ${fileAction}
-                        </div>
-                    `;
+                    const infoDiv = document.createElement('div');
+                    infoDiv.className = 'info';
+                    
+                    const titleEl = document.createElement('span');
+                    titleEl.className = 'title';
+                    titleEl.textContent = sale.title;
+                    
+                    const metaEl = document.createElement('span');
+                    metaEl.className = 'meta';
+                    metaEl.textContent = `${sale.price} ₽ • ${new Date(sale.date).toLocaleDateString()} • Покупатель: ${sale.buyerId}`;
+                    
+                    infoDiv.appendChild(titleEl);
+                    infoDiv.appendChild(metaEl);
+                    if (deadlineInfo) {
+                        const deadlineSpan = document.createElement('span');
+                        deadlineSpan.innerHTML = deadlineInfo;
+                        infoDiv.appendChild(deadlineSpan);
+                    }
+                    
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'sale-actions';
+                    actionsDiv.innerHTML = fileAction;
+                    
+                    item.appendChild(infoDiv);
+                    item.appendChild(actionsDiv);
                     sellerSalesList.appendChild(item);
                 }
             }
@@ -1048,13 +1222,27 @@ async function loadProductsData() {
                     statusHtml = '<span class="product-status status-rejected">Отклонён</span>';
                 }
 
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${product.title}</span>
-                        <span class="meta">${product.price} ₽ • ${statusHtml}</span>
-                    </div>
-                    <button class="delete-btn" onclick="deleteProduct(${product.id})">Удалить</button>
-                `;
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = product.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.innerHTML = `${product.price} ₽ • ${statusHtml}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteProduct(product.id);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(deleteBtn);
                 sellerProductsList.appendChild(item);
             });
         }
@@ -1084,16 +1272,39 @@ async function loadAdminData() {
             pendingProducts.forEach(product => {
                 const item = document.createElement('div');
                 item.className = 'pending-product-item';
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${product.title}</span>
-                        <span class="meta">${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}</span>
-                    </div>
-                    <div class="admin-actions">
-                        <button class="btn-approve" onclick="approveProduct(${product.id})">✓ Одобрить</button>
-                        <button class="btn-reject" onclick="rejectProduct(${product.id})">✗ Отклонить</button>
-                    </div>
-                `;
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = product.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.textContent = `${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'admin-actions';
+                
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'btn-approve';
+                approveBtn.textContent = '✓ Одобрить';
+                approveBtn.onclick = () => approveProduct(product.id);
+                
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn-reject';
+                rejectBtn.textContent = '✗ Отклонить';
+                rejectBtn.onclick = () => rejectProduct(product.id);
+                
+                actionsDiv.appendChild(approveBtn);
+                actionsDiv.appendChild(rejectBtn);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 pendingList.appendChild(item);
             });
         }
@@ -1109,15 +1320,33 @@ async function loadAdminData() {
             approvedProducts.forEach(product => {
                 const item = document.createElement('div');
                 item.className = 'admin-product-item';
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${product.title}</span>
-                        <span class="meta">${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}</span>
-                    </div>
-                    <div class="admin-actions">
-                        <button class="btn-reject" onclick="rejectProduct(${product.id})">✗ Скрыть</button>
-                    </div>
-                `;
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = product.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.textContent = `${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'admin-actions';
+                
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn-reject';
+                rejectBtn.textContent = '✗ Скрыть';
+                rejectBtn.onclick = () => rejectProduct(product.id);
+                
+                actionsDiv.appendChild(rejectBtn);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 approvedList.appendChild(item);
             });
         }
@@ -1138,17 +1367,44 @@ async function loadAdminData() {
                 const item = document.createElement('div');
                 item.className = 'pending-product-item';
                 const hasFile = request.fileName ? '📎 С файлом' : 'Без файла';
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${request.title}</span>
-                        <span class="meta">${request.description ? request.description.substring(0, 50) + '...' : 'Без описания'} • ${request.budget} ₽ • ${hasFile}</span>
-                        <span class="meta">Заказчик: ${request.requesterName}</span>
-                    </div>
-                    <div class="admin-actions">
-                        <button class="btn-approve" onclick="approveCustomRequest(${request.id})">✓ Одобрить</button>
-                        <button class="btn-reject" onclick="rejectCustomRequest(${request.id})">✗ Отклонить</button>
-                    </div>
-                `;
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = request.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.textContent = `${request.description ? request.description.substring(0, 50) + '...' : 'Без описания'} • ${request.budget} ₽ • ${hasFile}`;
+                
+                const requesterEl = document.createElement('span');
+                requesterEl.className = 'meta';
+                requesterEl.textContent = `Заказчик: ${request.requesterName}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                infoDiv.appendChild(requesterEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'admin-actions';
+                
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'btn-approve';
+                approveBtn.textContent = '✓ Одобрить';
+                approveBtn.onclick = () => approveCustomRequest(request.id);
+                
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn-reject';
+                rejectBtn.textContent = '✗ Отклонить';
+                rejectBtn.onclick = () => rejectCustomRequest(request.id);
+                
+                actionsDiv.appendChild(approveBtn);
+                actionsDiv.appendChild(rejectBtn);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 pendingRequestsList.appendChild(item);
             });
         }
@@ -1165,15 +1421,33 @@ async function loadAdminData() {
                 const item = document.createElement('div');
                 item.className = 'admin-product-item';
                 const hasFile = request.fileName ? '📎 С файлом' : 'Без файла';
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="title">${request.title}</span>
-                        <span class="meta">${request.budget} ₽ • ${hasFile} • Заказчик: ${request.requesterName}</span>
-                    </div>
-                    <div class="admin-actions">
-                        <button class="btn-reject" onclick="rejectCustomRequest(${request.id})">✗ Скрыть</button>
-                    </div>
-                `;
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const titleEl = document.createElement('span');
+                titleEl.className = 'title';
+                titleEl.textContent = request.title;
+                
+                const metaEl = document.createElement('span');
+                metaEl.className = 'meta';
+                metaEl.textContent = `${request.budget} ₽ • ${hasFile} • Заказчик: ${request.requesterName}`;
+                
+                infoDiv.appendChild(titleEl);
+                infoDiv.appendChild(metaEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'admin-actions';
+                
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn-reject';
+                rejectBtn.textContent = '✗ Скрыть';
+                rejectBtn.onclick = () => rejectCustomRequest(request.id);
+                
+                actionsDiv.appendChild(rejectBtn);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 approvedRequestsList.appendChild(item);
             });
         }
@@ -1197,20 +1471,43 @@ async function loadAdminData() {
                 const statusClass = user.isBlocked ? 'user-status-blocked' : 'user-status-active';
                 const statusText = user.isBlocked ? 'Заблокирован' : 'Активен';
 
-                const actionBtn = user.isBlocked
-                    ? `<button class="btn-unblock" onclick="unblockUser('${user.id}')">Разблокировать</button>`
-                    : `<button class="btn-block" onclick="blockUser('${user.id}')">Заблокировать</button>`;
-
-                item.innerHTML = `
-                    <div class="info">
-                        <span class="name">${user.name}</span>
-                        <span class="email">${user.email} • Баланс: ${user.balance} ₽</span>
-                    </div>
-                    <div class="user-actions">
-                        <span class="user-status ${statusClass}">${statusText}</span>
-                        ${actionBtn}
-                    </div>
-                `;
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'info';
+                
+                const nameEl = document.createElement('span');
+                nameEl.className = 'name';
+                nameEl.textContent = user.name;
+                
+                const emailEl = document.createElement('span');
+                emailEl.className = 'email';
+                emailEl.textContent = `${user.email} • Баланс: ${user.balance} ₽`;
+                
+                infoDiv.appendChild(nameEl);
+                infoDiv.appendChild(emailEl);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'user-actions';
+                
+                const statusSpan = document.createElement('span');
+                statusSpan.className = `user-status ${statusClass}`;
+                statusSpan.textContent = statusText;
+                
+                const actionBtn = document.createElement('button');
+                if (user.isBlocked) {
+                    actionBtn.className = 'btn-unblock';
+                    actionBtn.textContent = 'Разблокировать';
+                    actionBtn.onclick = () => unblockUser(user.id);
+                } else {
+                    actionBtn.className = 'btn-block';
+                    actionBtn.textContent = 'Заблокировать';
+                    actionBtn.onclick = () => blockUser(user.id);
+                }
+                
+                actionsDiv.appendChild(statusSpan);
+                actionsDiv.appendChild(actionBtn);
+                
+                item.appendChild(infoDiv);
+                item.appendChild(actionsDiv);
                 usersList.appendChild(item);
             });
         }
@@ -1602,20 +1899,36 @@ async function loadChatMessages() {
             const messageDiv = document.createElement('div');
             const isSent = msg.senderId === currentUser.id;
             messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
-            
-            let content = '';
+
+            // БЕЗОПАСНОСТЬ: Используем textContent вместо innerHTML
             if (msg.message) {
-                content += `<div>${msg.message}</div>`;
+                const msgEl = document.createElement('div');
+                msgEl.textContent = msg.message;
+                messageDiv.appendChild(msgEl);
             }
             if (msg.fileName) {
-                const fileIcon = getFileIcon(msg.fileType);
-                content += `<div class="chat-message-file">${fileIcon} <a href="data:${msg.fileType || 'application/octet-stream'};base64,${msg.fileData}" download="${msg.fileName}">${msg.fileName}</a></div>`;
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'chat-message-file';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.textContent = getFileIcon(msg.fileType) + ' ';
+                
+                const link = document.createElement('a');
+                link.href = `data:${msg.fileType || 'application/octet-stream'};base64,${msg.fileData}`;
+                link.download = msg.fileName;
+                link.textContent = msg.fileName;
+                
+                fileDiv.appendChild(iconSpan);
+                fileDiv.appendChild(link);
+                messageDiv.appendChild(fileDiv);
             }
             if (msg.createdAt) {
-                content += `<div class="chat-message-meta">${new Date(msg.createdAt).toLocaleString()}</div>`;
+                const metaDiv = document.createElement('div');
+                metaDiv.className = 'chat-message-meta';
+                metaDiv.textContent = new Date(msg.createdAt).toLocaleString();
+                messageDiv.appendChild(metaDiv);
             }
-            
-            messageDiv.innerHTML = content;
+
             messagesContainer.appendChild(messageDiv);
         });
 
@@ -1802,11 +2115,24 @@ async function loadNotifications() {
         notifications.slice(0, 10).forEach(notification => {
             const item = document.createElement('div');
             item.className = `notification-item ${notification.isRead ? 'read' : 'unread'}`;
-            item.innerHTML = `
-                <div class="notification-title">${notification.title}</div>
-                <div class="notification-message">${notification.message}</div>
-                <div class="notification-time">${new Date(notification.createdAt).toLocaleString()}</div>
-            `;
+            
+            // БЕЗОПАСНОСТЬ: Используем textContent
+            const titleEl = document.createElement('div');
+            titleEl.className = 'notification-title';
+            titleEl.textContent = notification.title;
+            
+            const messageEl = document.createElement('div');
+            messageEl.className = 'notification-message';
+            messageEl.textContent = notification.message;
+            
+            const timeEl = document.createElement('div');
+            timeEl.className = 'notification-time';
+            timeEl.textContent = new Date(notification.createdAt).toLocaleString();
+            
+            item.appendChild(titleEl);
+            item.appendChild(messageEl);
+            item.appendChild(timeEl);
+            
             if (!notification.isRead) {
                 item.onclick = () => markNotificationRead(notification.id);
             }
