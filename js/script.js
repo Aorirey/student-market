@@ -364,7 +364,19 @@ function switchCabinetTab(type) {
     });
 
     document.getElementById(`cabinet-${type}`).classList.add('active');
-    event.target.classList.add('active');
+    
+    // Находим кнопку и добавляем active
+    const buttons = document.querySelectorAll('.cabinet-tab');
+    buttons.forEach(btn => {
+        if (btn.textContent.toLowerCase().includes(type.toLowerCase()) || 
+            (type === 'buyer' && btn.textContent.includes('Покупатель')) ||
+            (type === 'sales' && btn.textContent.includes('продажи')) ||
+            (type === 'products' && btn.textContent.includes('товары')) ||
+            (type === 'chats' && btn.textContent.includes('Чаты')) ||
+            (type === 'add' && btn.textContent.includes('Добавить'))) {
+            btn.classList.add('active');
+        }
+    });
 
     if (type === 'sales') {
         loadSalesData();
@@ -388,7 +400,17 @@ function switchAdminTab(type) {
     });
 
     document.getElementById(`admin-${type}`).classList.add('active');
-    event.target.classList.add('active');
+    
+    // Находим кнопку и добавляем active
+    const buttons = document.querySelectorAll('.admin-tab');
+    buttons.forEach(btn => {
+        if ((type === 'moderation' && btn.textContent.includes('Модерация')) ||
+            (type === 'custom' && btn.textContent.includes('Индивид')) ||
+            (type === 'users' && btn.textContent.includes('Пользователи'))) {
+            btn.classList.add('active');
+        }
+    });
+    
     loadAdminData();
 }
 
@@ -1068,7 +1090,7 @@ async function loadCabinetData() {
                 // Кнопка оставить отзыв (если файла ещё нет или уже есть отзыв)
                 const reviewBtn = !purchase.fileAttached
                     ? ''
-                    : `<button class="btn-review" onclick="openReviewModal(${purchase.id}, '${escapeHTML(purchase.sellerId)}', ${JSON.stringify(escapeHTML(purchase.title))})">✎ Оставить отзыв</button>`;
+                    : `<button class="btn-review" onclick="openReviewModal(${purchase.id}, '${escapeHTML(purchase.sellerId)}', ${JSON.stringify(purchase.title)})">✎ Оставить отзыв</button>`;
 
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'info';
