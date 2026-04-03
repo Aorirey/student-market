@@ -78,40 +78,37 @@ function updateThemeIcon(theme) {
 // Загрузка Telegram Login Widget
 async function loadTelegramWidget() {
     const container = document.getElementById('telegram-login-widget');
-    if (!container) return;
+    const loading = document.getElementById('telegram-loading');
 
-    // Показываем загрузку
-    document.getElementById('telegram-loading').style.display = 'block';
-
-    // Если скрипт уже загружен — не добавляем повторно
-    if (document.getElementById('telegram-widget-script')) {
-        document.getElementById('telegram-loading').style.display = 'none';
+    if (!container) {
+        console.error('[TELEGRAM] Контейнер не найден');
         return;
     }
+
+    // Если виджет уже загружен — ничего не делаем
+    if (container.querySelector('script')) return;
 
     try {
         // Получаем username бота с сервера
         const response = await fetch(`${API_URL}/config/telegram`);
         const config = await response.json();
-        console.log('[TELEGRAM] Конфиг с сервера:', config);
+        console.log('[TELEGRAM] Конфиг:', config);
 
         if (!config.botUsername) {
-            document.getElementById('telegram-loading').innerHTML = `
+            container.innerHTML = `
                 <p style="color: var(--warning);">⚠️ TELEGRAM_BOT_USERNAME не установлен</p>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 10px;">
-                    Добавьте переменную TELEGRAM_BOT_USERNAME в Render Dashboard → Environment
-                </p>
-                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
-                    Также нужен TELEGRAM_BOT_TOKEN
+                    Добавьте переменную в Render Dashboard → Environment
                 </p>
             `;
             return;
         }
 
-        console.log('[TELEGRAM] Загрузка виджета для бота:', config.botUsername);
+        // Убираем loading
+        if (loading) loading.style.display = 'none';
 
+        // Создаём скрипт виджета
         const script = document.createElement('script');
-        script.id = 'telegram-widget-script';
         script.src = 'https://telegram.org/js/telegram-widget.js?22';
         script.setAttribute('data-telegram-login', config.botUsername);
         script.setAttribute('data-size', 'large');
@@ -119,23 +116,15 @@ async function loadTelegramWidget() {
         script.setAttribute('data-onauth', 'onTelegramAuth(user)');
         script.setAttribute('data-request-access', 'write');
 
-        script.onload = () => {
-            document.getElementById('telegram-loading').style.display = 'none';
-        };
-
         script.onerror = () => {
-            document.getElementById('telegram-loading').innerHTML = `
-                <p style="color: var(--danger);">❌ Не удалось загрузить виджет Telegram</p>
-                <p style="font-size: 0.85rem; color: var(--text-secondary);">Проверьте настройки бота у @BotFather</p>
-            `;
+            container.innerHTML = `<p style="color: var(--danger);">❌ Не удалось загрузить виджет</p>`;
         };
 
         container.appendChild(script);
+        console.log('[TELEGRAM] Виджет загружен:', config.botUsername);
     } catch (error) {
-        console.error('[TELEGRAM] Ошибка загрузки конфигурации:', error);
-        document.getElementById('telegram-loading').innerHTML = `
-            <p style="color: var(--danger);">❌ Ошибка загрузки</p>
-        `;
+        console.error('[TELEGRAM] Ошибка:', error);
+        container.innerHTML = `<p style="color: var(--danger);">❌ Ошибка: ${error.message}</p>`;
     }
 }
 
