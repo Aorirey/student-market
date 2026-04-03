@@ -2,7 +2,6 @@ services:
   - type: web
     name: student-market
     env: node
-    buildCommand: npm install
     startCommand: node server-pg.js
     envVars:
       - key: NODE_ENV
