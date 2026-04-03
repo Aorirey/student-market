@@ -93,16 +93,22 @@ async function loadTelegramWidget() {
         // Получаем username бота с сервера
         const response = await fetch(`${API_URL}/config/telegram`);
         const config = await response.json();
+        console.log('[TELEGRAM] Конфиг с сервера:', config);
 
         if (!config.botUsername) {
             document.getElementById('telegram-loading').innerHTML = `
-                <p style="color: var(--warning);">⚠️ Telegram бот не настроен</p>
+                <p style="color: var(--warning);">⚠️ TELEGRAM_BOT_USERNAME не установлен</p>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 10px;">
-                    Владелец сайта должен добавить TELEGRAM_BOT_USERNAME в настройки Render
+                    Добавьте переменную TELEGRAM_BOT_USERNAME в Render Dashboard → Environment
+                </p>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
+                    Также нужен TELEGRAM_BOT_TOKEN
                 </p>
             `;
             return;
         }
+
+        console.log('[TELEGRAM] Загрузка виджета для бота:', config.botUsername);
 
         const script = document.createElement('script');
         script.id = 'telegram-widget-script';

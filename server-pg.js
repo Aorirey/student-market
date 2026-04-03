@@ -32,14 +32,14 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://telegram.org"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
             imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
             connectSrc: ["'self'", '*', 'blob:', 'data:'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
-            frameSrc: ["'none'"],
+            frameSrc: ["'none'", "https://oauth.telegram.org"],
             workerSrc: ["'self'", 'blob:']
         }
     },
