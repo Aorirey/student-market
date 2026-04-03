@@ -265,14 +265,14 @@ async function initDatabase() {
 // ============================================
 
 const registerValidator = [
-    body('name').trim().notEmpty().withMessage('Имя обязательно').isLength({ max: 100 }),
-    body('email').trim().notEmpty().withMessage('Email обязателен').isEmail().normalizeEmail(),
-    body('password').notEmpty().withMessage('Пароль обязателен').isLength({ min: 6, max: 128 }),
+    body('name').trim().notEmpty().withMessage('Имя обязательно').isLength({ max: 100 }).withMessage('Имя слишком длинное'),
+    body('email').trim().notEmpty().withMessage('Email обязателен').isEmail().withMessage('Некорректный email'),
+    body('password').notEmpty().withMessage('Пароль обязателен').isLength({ min: 6, max: 128 }).withMessage('Пароль от 6 до 128 символов'),
     validate
 ];
 
 const loginValidator = [
-    body('email').trim().notEmpty().withMessage('Email обязателен').isEmail().normalizeEmail(),
+    body('email').trim().notEmpty().withMessage('Email обязателен').isEmail().withMessage('Некорректный email'),
     body('password').notEmpty().withMessage('Пароль обязателен'),
     validate
 ];
@@ -373,61 +373,75 @@ app.get('/api/users/:id', userIdValidator, async (req, res) => {
 app.post('/api/users/register', registerValidator, async (req, res) => {
     try {
         const { name, email, password } = req.body;
+        console.log(`[REGISTER] Попытка: name=${name}, email=${email}, passwordLen=${password ? password.length : 0}`);
+        
         const existing = await pool.query("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
-        if (existing.rows.length > 0) return res.status(409).json({ error: 'Пользователь уже существует' });
+        if (existing.rows.length > 0) {
+            console.log(`[REGISTER] Пользователь уже существует: ${email}`);
+            return res.status(409).json({ error: 'Пользователь уже существует' });
+        }
+        
         const hashedPassword = await bcrypt.hash(password, 10);
         const id = uuidv4();
         const result = await pool.query(
-            `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) 
-             RETURNING id, name, email, balance, is_admin, is_blocked`, 
+            `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, name, email, balance, is_admin, is_blocked`,
             [id, sanitizeHTML(name), email.toLowerCase(), hashedPassword, 10000, false, false]
         );
-        console.log(`[AUTH] Зарегистрирован: ${email}`);
-        res.status(201).json({ 
-            id: result.rows[0].id, 
-            name: sanitizeHTML(result.rows[0].name), 
-            email: result.rows[0].email, 
-            balance: result.rows[0].balance, 
-            isAdmin: result.rows[0].is_admin, 
-            isBlocked: result.rows[0].is_blocked 
+        console.log(`[REGISTER] Успешно: ${email}`);
+        res.status(201).json({
+            id: result.rows[0].id,
+            name: sanitizeHTML(result.rows[0].name),
+            email: result.rows[0].email,
+            balance: result.rows[0].balance,
+            isAdmin: result.rows[0].is_admin,
+            isBlocked: result.rows[0].is_blocked
         });
-    } catch (error) { 
-        console.error('Ошибка регистрации:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+    } catch (error) {
+        console.error('[REGISTER] Ошибка:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
     }
 });
 
 app.post('/api/users/login', loginValidator, async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log(`[LOGIN] Попытка входа: email=${email}, passwordLen=${password ? password.length : 0}`);
+        
         const result = await pool.query("SELECT id, name, email, password, balance, is_admin, is_blocked FROM users WHERE email = $1", [email.toLowerCase()]);
+        
         if (result.rows.length === 0) {
-            console.log(`[AUTH] Неудачный вход: ${email}`);
+            console.log(`[LOGIN] Пользователь не найден: ${email}`);
             return res.status(401).json({ error: 'Неверный email или пароль' });
         }
+        
         const row = result.rows[0];
+        console.log(`[LOGIN] Найден пользователь: ${row.email}, isAdmin=${row.is_admin}`);
+        
         const isValidPassword = await bcrypt.compare(password, row.password);
         if (!isValidPassword) {
-            console.log(`[AUTH] Неудачный вход: ${email}`);
+            console.log(`[LOGIN] Неверный пароль для: ${email}`);
             return res.status(401).json({ error: 'Неверный email или пароль' });
         }
+        
         if (row.is_blocked) {
-            console.log(`[AUTH] Заблокирован: ${email}`);
+            console.log(`[LOGIN] Заблокирован: ${email}`);
             return res.status(403).json({ error: 'Аккаунт заблокирован' });
         }
-        console.log(`[AUTH] Успешный вход: ${email}`);
-        res.json({ 
-            id: sanitizeHTML(row.id), 
-            name: sanitizeHTML(row.name), 
-            email: sanitizeHTML(row.email), 
-            balance: row.balance, 
-            isAdmin: row.is_admin, 
-            isBlocked: row.is_blocked 
+        
+        console.log(`[LOGIN] Успешный вход: ${email}`);
+        res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isBlocked: row.is_blocked
         });
-    } catch (error) { 
-        console.error('Ошибка входа:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+    } catch (error) {
+        console.error('[LOGIN] Ошибка:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
     }
 });
 
