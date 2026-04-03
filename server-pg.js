@@ -8,6 +8,7 @@ const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 const { body, param, query, validationResult } = require('express-validator');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -98,7 +99,28 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ============================================
 // СТАТИКА: Раздача CSS, JS, изображений
 // ============================================
-app.use(express.static(path.join(__dirname)));
+app.use('/css', express.static(path.join(__dirname, 'css')));
+app.use('/js', express.static(path.join(__dirname, 'js')));
+
+// Главная страница — внедряем Telegram виджет
+app.get('/', (req, res) => {
+    let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
+    const widgetHtml = botUsername
+        ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">
+            <script src="https://telegram.org/js/telegram-widget.js?22"
+                data-telegram-login="${botUsername}"
+                data-size="large"
+                data-radius="10"
+                data-onauth="onTelegramAuth(user)"
+                data-request-access="write"></script>
+           </div>`
+        : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">
+            <p>Виджет Telegram не настроен</p>
+           </div>`;
+    html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
+    res.send(html);
+});
 
 // ============================================
 // БЕЗОПАСНОСТЬ: Middleware валидации
