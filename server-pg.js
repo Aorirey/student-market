@@ -107,17 +107,12 @@ app.get('/', (req, res) => {
     let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
     const widgetHtml = botUsername
-        ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">
-            <script src="https://telegram.org/js/telegram-widget.js?22"
-                data-telegram-login="${botUsername}"
-                data-size="large"
-                data-radius="10"
-                data-onauth="onTelegramAuth(user)"
-                data-request-access="write"></script>
-           </div>`
-        : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">
-            <p>Виджет Telegram не настроен</p>
-           </div>`;
+        ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">` +
+          `<script src="https://telegram.org/js/telegram-widget.js?22" ` +
+          `data-telegram-login="${botUsername}" data-size="large" data-radius="10" ` +
+          `data-onauth="onTelegramAuth(user)" data-request-access="write"><\/script></div>`
+        : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
+          `<p>Виджет Telegram не настроен</p></div>`;
     html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
     res.send(html);
 });
