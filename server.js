@@ -31,14 +31,14 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
+            scriptSrc: ["'self'", "https://telegram.org"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
             connectSrc: ["'self'", '*'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:'],
-            frameSrc: ["'none'"]
+            frameSrc: ["'none'", "https://oauth.telegram.org"]
         }
     },
     crossOriginEmbedderPolicy: false,
@@ -466,8 +466,10 @@ if (dbMode === 'postgres') {
     // ============================================
 
     app.get('/api/config/telegram', (req, res) => {
+        const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
+        console.log(`[TELEGRAM] Запрос конфига. TELEGRAM_BOT_USERNAME=${botUsername}`);
         res.json({
-            botUsername: process.env.TELEGRAM_BOT_USERNAME || null
+            botUsername: botUsername
         });
     });
 
