@@ -249,14 +249,14 @@ function showToast(title, message, type = 'info', duration = 4000) {
     toast.innerHTML = `
         <span class="toast-icon">${icons[type]}</span>
         <div class="toast-content">
-            <div class="toast-title">${title}</div>
-            <div class="toast-message">${message}</div>
+            <div class="toast-title">${escapeHTML(title)}</div>
+            <div class="toast-message">${escapeHTML(message)}</div>
         </div>
-        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+        <button class="toast-close" data-action="close-toast">×</button>
     `;
-    
+
     container.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.classList.add('hiding');
         setTimeout(() => toast.remove(), 300);
@@ -1082,7 +1082,7 @@ async function loadCabinetData() {
 
                 let fileAction = '';
                 if (purchase.fileAttached) {
-                    fileAction = `<button class="btn-view" onclick="viewPurchaseFile(${purchase.id})">📄 Смотреть работу</button>`;
+                    fileAction = `<button class="btn-view" data-action="view-purchase-file" data-purchase-id="${purchase.id}">📄 Смотреть работу</button>`;
                 } else {
                     fileAction = '<span style="color: var(--text-secondary); font-size: 0.9em;">Файл ещё не загружен продавцом</span>';
                 }
@@ -1090,7 +1090,7 @@ async function loadCabinetData() {
                 // Кнопка оставить отзыв (если файла ещё нет или уже есть отзыв)
                 const reviewBtn = !purchase.fileAttached
                     ? ''
-                    : `<button class="btn-review" onclick="openReviewModal(${purchase.id}, '${escapeHTML(purchase.sellerId)}', ${JSON.stringify(purchase.title)})">✎ Оставить отзыв</button>`;
+                    : `<button class="btn-review" data-action="open-review-modal" data-purchase-id="${purchase.id}" data-seller-id="${escapeHTML(purchase.sellerId)}" data-product-title="${escapeHTML(purchase.title)}">✎ Оставить отзыв</button>`;
 
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'info';
@@ -1150,9 +1150,9 @@ async function loadSalesData() {
                     const escapedBuyerId = escapeHTML(sale.buyerId);
                     const escapedSellerId = escapeHTML(sale.sellerId);
                     if (sale.fileAttached) {
-                        fileAction = `<button class="btn-replace" onclick="openUploadModal(${sale.id}, '${escapedBuyerId}', '${escapedSellerId}')">📝 Заменить файл</button>`;
+                        fileAction = `<button class="btn-replace" data-action="open-upload-modal" data-sale-id="${sale.id}" data-buyer-id="${escapedBuyerId}" data-seller-id="${escapedSellerId}">📝 Заменить файл</button>`;
                     } else {
-                        fileAction = `<button class="btn-upload" onclick="openUploadModal(${sale.id}, '${escapedBuyerId}', '${escapedSellerId}')">📤 Прикрепить работу</button>`;
+                        fileAction = `<button class="btn-upload" data-action="open-upload-modal" data-sale-id="${sale.id}" data-buyer-id="${escapedBuyerId}" data-seller-id="${escapedSellerId}">📤 Прикрепить работу</button>`;
                     }
 
                     // Вычисляем срок до конца сдачи
@@ -1878,10 +1878,13 @@ async function loadChatsList() {
         allChats.forEach(chat => {
             const chatItem = document.createElement('div');
             chatItem.className = 'chat-item';
-            chatItem.onclick = () => openChat(chat.id, chat.counterpartName, chat.title);
+            chatItem.dataset.action = 'open-chat';
+            chatItem.dataset.chatId = chat.id;
+            chatItem.dataset.counterpartName = chat.counterpartName;
+            chatItem.dataset.chatTitle = chat.title;
             chatItem.innerHTML = `
-                <div class="chat-item-name">${chat.counterpartName}</div>
-                <div class="chat-item-title">${chat.title}</div>
+                <div class="chat-item-name">${escapeHTML(chat.counterpartName)}</div>
+                <div class="chat-item-title">${escapeHTML(chat.title)}</div>
             `;
             chatsListContent.appendChild(chatItem);
         });
@@ -2079,8 +2082,8 @@ function updateFilePreview() {
     if (selectedFileForChat) {
         preview.style.display = 'flex';
         preview.innerHTML = `
-            <span>📎 Прикреплён файл: ${selectedFileForChat.name}</span>
-            <button onclick="clearSelectedFile()">×</button>
+            <span>📎 Прикреплён файл: ${escapeHTML(selectedFileForChat.name)}</span>
+            <button data-action="clear-selected-file">×</button>
         `;
     } else {
         preview.style.display = 'none';
@@ -2173,7 +2176,8 @@ async function loadNotifications() {
             item.appendChild(timeEl);
 
             if (!notification.isRead) {
-                item.onclick = () => markNotificationRead(notification.id);
+                item.dataset.action = 'mark-notification-read';
+                item.dataset.notificationId = notification.id;
             }
             notificationsList.appendChild(item);
         });
@@ -2226,15 +2230,330 @@ async function markAllNotificationsRead() {
     }
 }
 
-// Закрыть уведомления при клике вне
-document.addEventListener('click', function(event) {
-    const dropdown = document.getElementById('notifications-dropdown');
-    const button = document.getElementById('btn-notifications');
-    
-    if (dropdown && !dropdown.contains(event.target) && !button.contains(event.target)) {
-        dropdown.style.display = 'none';
+// ==================== EVENT DELEGATION (CSP-safe) ====================
+
+function setupEventListeners() {
+    // Обработчик кликов по всему документу
+    document.addEventListener('click', function(event) {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-theme':
+                toggleTheme();
+                break;
+            case 'open-modal':
+                openModal(target.dataset.modal);
+                break;
+            case 'toggle-notifications':
+                toggleNotifications();
+                break;
+            case 'open-cabinet':
+                openCabinet();
+                break;
+            case 'open-admin':
+                openAdminPanel();
+                break;
+            case 'logout':
+                logout();
+                break;
+            case 'mark-all-notifications-read':
+                markAllNotificationsRead();
+                break;
+            case 'close-chat-window':
+                closeChatWindow();
+                break;
+            case 'trigger-chat-file':
+                document.getElementById('chat-file-input').click();
+                break;
+            case 'send-message':
+                sendMessage();
+                break;
+            case 'back-from-seller':
+                backFromSeller();
+                break;
+            case 'close-modal':
+                closeModal();
+                break;
+            case 'login':
+                login();
+                break;
+            case 'switch-form':
+                switchForm(target.dataset.form);
+                break;
+            case 'register':
+                register();
+                break;
+            case 'close-upload-modal':
+                closeUploadModal();
+                break;
+            case 'upload-work-file':
+                uploadWorkFile();
+                break;
+            case 'contact-seller-from-modal':
+                contactSellerFromModal();
+                break;
+            case 'close-review-modal':
+                closeReviewModal();
+                break;
+            case 'submit-review':
+                submitReview();
+                break;
+            case 'close-purchase-confirm-modal':
+                closePurchaseConfirmModal();
+                break;
+            case 'confirm-purchase':
+                confirmPurchase();
+                break;
+            case 'contact-seller-from-confirm':
+                contactSellerFromConfirm();
+                break;
+            case 'close-toast':
+                const toast = target.closest('.toast');
+                if (toast) toast.remove();
+                break;
+            case 'clear-selected-file':
+                clearSelectedFile();
+                break;
+            case 'mark-notification-read':
+                markNotificationRead(target.dataset.notificationId);
+                break;
+            case 'view-purchase-file':
+                viewPurchaseFile(parseInt(target.dataset.purchaseId));
+                break;
+            case 'open-review-modal':
+                openReviewModal(
+                    parseInt(target.dataset.purchaseId),
+                    target.dataset.sellerId,
+                    target.dataset.productTitle
+                );
+                break;
+            case 'open-upload-modal':
+                openUploadModal(
+                    parseInt(target.dataset.saleId),
+                    target.dataset.buyerId,
+                    target.dataset.sellerId
+                );
+                break;
+            case 'open-chat':
+                openChat(
+                    parseInt(target.dataset.chatId),
+                    target.dataset.counterpartName,
+                    target.dataset.chatTitle
+                );
+                break;
+        }
+    });
+
+    // Обработчик для вкладок
+    document.addEventListener('click', function(event) {
+        const tabBtn = event.target.closest('[data-tab]');
+        if (tabBtn) {
+            openTab(tabBtn.dataset.tab);
+            return;
+        }
+
+        const cabinetTab = event.target.closest('[data-cabinet-tab]');
+        if (cabinetTab) {
+            switchCabinetTab(cabinetTab.dataset.cabinetTab);
+            return;
+        }
+
+        const adminTab = event.target.closest('[data-admin-tab]');
+        if (adminTab) {
+            switchAdminTab(adminTab.dataset.adminTab);
+        }
+    });
+
+    // Обработчик изменений (select)
+    document.addEventListener('change', function(event) {
+        const filter = event.target.closest('[data-filter]');
+        if (filter) {
+            const category = filter.dataset.filter;
+            const value = filter.value;
+            if (category === 'custom') {
+                filterCustomRequests();
+            } else {
+                filterProducts(category);
+            }
+            return;
+        }
+
+        const toggleType = event.target.closest('[data-toggle-product-type]');
+        if (toggleType) {
+            toggleProductType();
+        }
+
+        const chatFileInput = event.target.closest('#chat-file-input');
+        if (chatFileInput) {
+            handleChatFileSelect(event);
+        }
+    });
+
+    // Обработчик клавиш (Enter в поле чата)
+    document.addEventListener('keypress', function(event) {
+        if (event.target.id === 'chat-message-input' && event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    // Закрытие модалки при клике на фон
+    document.addEventListener('click', function(event) {
+        const authModal = document.getElementById('auth-modal');
+        if (event.target === authModal) {
+            closeModal();
+        }
+    });
+
+    // Закрытие уведомлений при клике вне
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('notifications-dropdown');
+        const button = document.getElementById('btn-notifications');
+
+        if (dropdown && !dropdown.contains(event.target) && !button.contains(event.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Форма добавления товара
+    const addProductForm = document.getElementById('add-product-form');
+    if (addProductForm) {
+        addProductForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            if (!currentUser) {
+                openModal('login');
+                return;
+            }
+
+            const type = document.getElementById('product-type').value;
+
+            if (type === 'product') {
+                const title = document.getElementById('product-title').value;
+                const category = document.getElementById('product-category').value;
+                const discipline = document.getElementById('product-discipline').value;
+                const price = parseInt(document.getElementById('product-price').value);
+                const deadlineDays = parseInt(document.getElementById('product-deadline').value);
+
+                if (!title || !category || !discipline || !price) {
+                    showToast('Ошибка', 'Заполните все поля товара!', 'error');
+                    return;
+                }
+
+                const deadlineDate = new Date();
+                deadlineDate.setDate(deadlineDate.getDate() + deadlineDays);
+
+                try {
+                    const response = await fetch(`${API_URL}/products`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title, category, discipline, price,
+                            sellerId: currentUser.id,
+                            sellerName: currentUser.name,
+                            deadline: deadlineDate.toISOString()
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json();
+                        showToast('Ошибка', data.error || 'Ошибка создания товара', 'error');
+                        return;
+                    }
+
+                    showToast('Успешно', 'Товар отправлен на модерацию', 'success');
+                    addProductForm.reset();
+                } catch (error) {
+                    showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                    console.error(error);
+                }
+            } else {
+                const customTitle = document.getElementById('custom-title').value;
+                const description = document.getElementById('custom-description').value;
+                const budget = parseInt(document.getElementById('custom-budget').value);
+                const fileInput = document.getElementById('custom-file');
+
+                if (!customTitle || !budget) {
+                    showToast('Ошибка', 'Заполните название и бюджет!', 'error');
+                    return;
+                }
+
+                let fileName = null;
+                let fileData = null;
+
+                if (fileInput.files.length > 0) {
+                    const file = fileInput.files[0];
+                    fileName = file.name;
+
+                    const reader = new FileReader();
+                    reader.onload = async function(e) {
+                        fileData = e.target.result.split(',')[1];
+
+                        try {
+                            const response = await fetch(`${API_URL}/custom-requests`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    title: customTitle,
+                                    description,
+                                    budget,
+                                    requesterId: currentUser.id,
+                                    requesterName: currentUser.name,
+                                    fileName,
+                                    fileData
+                                })
+                            });
+
+                            if (!response.ok) {
+                                const data = await response.json();
+                                showToast('Ошибка', data.error || 'Ошибка создания запроса', 'error');
+                                return;
+                            }
+
+                            showToast('Успешно', 'Запрос отправлен на модерацию', 'success');
+                            addProductForm.reset();
+                            toggleProductType();
+                            renderCustomRequests('all');
+                        } catch (error) {
+                            showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                            console.error(error);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    try {
+                        const response = await fetch(`${API_URL}/custom-requests`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                title: customTitle,
+                                description,
+                                budget,
+                                requesterId: currentUser.id,
+                                requesterName: currentUser.name
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const data = await response.json();
+                            showToast('Ошибка', data.error || 'Ошибка создания запроса', 'error');
+                            return;
+                        }
+
+                        showToast('Успешно', 'Запрос отправлен на модерацию', 'success');
+                        addProductForm.reset();
+                        toggleProductType();
+                        renderCustomRequests('all');
+                    } catch (error) {
+                        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                        console.error(error);
+                    }
+                }
+            }
+        });
     }
-});
+}
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
@@ -2256,10 +2575,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderProducts('courses', 'all');
     renderCustomRequests('all');
 
-    window.onclick = function(event) {
-        const modal = document.getElementById('auth-modal');
-        if (event.target === modal) {
-            closeModal();
-        }
-    }
+    // Настраиваем event listeners (CSP-safe)
+    setupEventListeners();
 });

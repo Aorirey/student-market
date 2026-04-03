@@ -11,30 +11,30 @@
     <!-- Шапка -->
     <header>
         <a href="#" class="logo">STUDMARKET</a>
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
+        <button class="theme-toggle" id="theme-toggle" data-action="toggle-theme" title="Переключить тему">
             <span class="theme-icon">🌙</span>
         </button>
         <div class="auth-buttons" id="auth-buttons">
-            <button class="btn-login" onclick="openModal('login')">Войти</button>
-            <button class="btn-signup" onclick="openModal('register')">Стать продавцом</button>
+            <button class="btn-login" data-action="open-modal" data-modal="login">Войти</button>
+            <button class="btn-signup" data-action="open-modal" data-modal="register">Стать продавцом</button>
         </div>
         <div class="user-menu" id="user-menu" style="display: none;">
             <div class="user-info">
                 <span class="user-name" id="user-name">Пользователь</span>
-                <button class="btn-notifications" id="btn-notifications" onclick="toggleNotifications()" title="Уведомления" style="position: relative; margin-right: 10px;">
+                <button class="btn-notifications" id="btn-notifications" data-action="toggle-notifications" title="Уведомления" style="position: relative; margin-right: 10px;">
                     🔔
                     <span id="notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;">0</span>
                 </button>
-                <button class="btn-cabinet" onclick="openCabinet()">Личный кабинет</button>
-                <button class="btn-admin" id="btn-admin" style="display: none;" onclick="openAdminPanel()">Админ-панель</button>
-                <button class="btn-logout" onclick="logout()">Выйти</button>
+                <button class="btn-cabinet" data-action="open-cabinet">Личный кабинет</button>
+                <button class="btn-admin" id="btn-admin" style="display: none;" data-action="open-admin">Админ-панель</button>
+                <button class="btn-logout" data-action="logout">Выйти</button>
             </div>
         </div>
         <!-- Выпадающий список уведомлений -->
         <div class="notifications-dropdown" id="notifications-dropdown" style="display: none;">
             <div class="notifications-header">
                 <h3>Уведомления</h3>
-                <button onclick="markAllNotificationsRead()" style="font-size: 0.8rem; color: var(--primary-blue); cursor: pointer;">Отметить все прочитанными</button>
+                <button data-action="mark-all-notifications-read" style="font-size: 0.8rem; color: var(--primary-blue); cursor: pointer;">Отметить все прочитанными</button>
             </div>
             <div id="notifications-list"></div>
         </div>
@@ -43,10 +43,10 @@
     <!-- Навигация (Вкладки) -->
     <div class="tabs-container">
         <div class="tabs">
-            <button class="tab-btn active" onclick="openTab('practices')">Практические работы</button>
-            <button class="tab-btn" onclick="openTab('labs')">Лабораторные работы</button>
-            <button class="tab-btn" onclick="openTab('courses')">Курсовые работы</button>
-            <button class="tab-btn" onclick="openTab('custom')">Ещё</button>
+            <button class="tab-btn active" data-tab="practices">Практические работы</button>
+            <button class="tab-btn" data-tab="labs">Лабораторные работы</button>
+            <button class="tab-btn" data-tab="courses">Курсовые работы</button>
+            <button class="tab-btn" data-tab="custom">Ещё</button>
         </div>
     </div>
 
@@ -56,7 +56,7 @@
         <div id="practices" class="tab-content active">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <select id="select-practices" onchange="filterProducts('practices')">
+                <select id="select-practices" data-filter="practices">
                     <option value="all">Все дисциплины</option>
                     <option value="Основы программирования">Основы программирования</option>
                     <option value="Высшая математика">Высшая математика</option>
@@ -70,7 +70,7 @@
         <div id="labs" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <select id="select-labs" onchange="filterProducts('labs')">
+                <select id="select-labs" data-filter="labs">
                     <option value="all">Все дисциплины</option>
                     <option value="Основы электронной техники">Основы электронной техники</option>
                     <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
@@ -84,7 +84,7 @@
         <div id="courses" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <select id="select-courses" onchange="filterProducts('courses')">
+                <select id="select-courses" data-filter="courses">
                     <option value="all">Все дисциплины</option>
                     <option value="Экономика предприятия">Экономика предприятия</option>
                     <option value="Менеджмент">Менеджмент</option>
@@ -98,7 +98,7 @@
         <div id="custom" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Фильтр:</span>
-                <select id="select-custom" onchange="filterCustomRequests()">
+                <select id="select-custom" data-filter="custom">
                     <option value="all">Все запросы</option>
                     <option value="with_file">С файлом</option>
                     <option value="without_file">Без файла</option>
@@ -112,11 +112,11 @@
             <div class="cabinet-header">
                 <h2>Личный кабинет</h2>
                 <div class="cabinet-tabs">
-                    <button class="cabinet-tab active" onclick="switchCabinetTab('buyer')">Покупатель</button>
-                    <button class="cabinet-tab" onclick="switchCabinetTab('sales')">Мои продажи</button>
-                    <button class="cabinet-tab" onclick="switchCabinetTab('products')">Мои товары</button>
-                    <button class="cabinet-tab" onclick="switchCabinetTab('chats')">Чаты</button>
-                    <button class="cabinet-tab" onclick="switchCabinetTab('add')">Добавить товар/запрос</button>
+                    <button class="cabinet-tab active" data-cabinet-tab="buyer">Покупатель</button>
+                    <button class="cabinet-tab" data-cabinet-tab="sales">Мои продажи</button>
+                    <button class="cabinet-tab" data-cabinet-tab="products">Мои товары</button>
+                    <button class="cabinet-tab" data-cabinet-tab="chats">Чаты</button>
+                    <button class="cabinet-tab" data-cabinet-tab="add">Добавить товар/запрос</button>
                 </div>
             </div>
 
@@ -153,7 +153,7 @@
                 <div class="cabinet-info">
                     <h3>Добавить товар или индивидуальный запрос</h3>
                     <form class="add-product-form" id="add-product-form">
-                        <select id="product-type" onchange="toggleProductType()" required>
+                        <select id="product-type" data-toggle-product-type required>
                             <option value="product">Готовый товар</option>
                             <option value="custom">Индивидуальный запрос</option>
                         </select>
@@ -210,15 +210,15 @@
                     </div>
                     <div class="chat-window" id="chat-window" style="display: none;">
                         <div class="chat-header">
-                            <button class="btn-back-chat" onclick="closeChatWindow()">← Назад</button>
+                            <button class="btn-back-chat" data-action="close-chat-window">← Назад</button>
                             <span id="chat-with-name"></span>
                         </div>
                         <div class="chat-messages" id="chat-messages"></div>
                         <div class="chat-input-area">
-                            <input type="file" id="chat-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="display: none;" onchange="handleChatFileSelect(event)">
-                            <button class="btn-attach-file" onclick="document.getElementById('chat-file-input').click()" title="Прикрепить файл">📎</button>
-                            <input type="text" id="chat-message-input" placeholder="Введите сообщение..." onkeypress="handleChatKeyPress(event)">
-                            <button class="btn-send-message" onclick="sendMessage()">➤</button>
+                            <input type="file" id="chat-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="display: none;" data-action="chat-file-input">
+                            <button class="btn-attach-file" data-action="trigger-chat-file" title="Прикрепить файл">📎</button>
+                            <input type="text" id="chat-message-input" placeholder="Введите сообщение..." data-action="chat-input">
+                            <button class="btn-send-message" data-action="send-message">➤</button>
                         </div>
                         <div id="attached-file-preview" class="attached-file-preview" style="display: none;"></div>
                     </div>
@@ -229,7 +229,7 @@
         <!-- Страница продавца -->
         <div id="seller-page" class="tab-content">
             <div class="seller-page-header">
-                <button class="btn-back" onclick="backFromSeller()">← Назад</button>
+                <button class="btn-back" data-action="back-from-seller">← Назад</button>
                 <h2 id="seller-page-name">Продавец</h2>
                 <p id="seller-page-rating" class="seller-rating">Рейтинг: --</p>
             </div>
@@ -250,9 +250,9 @@
             <div class="admin-header">
                 <h2>🛡️ Панель администратора</h2>
                 <div class="admin-tabs">
-                    <button class="admin-tab active" onclick="switchAdminTab('moderation')">Модерация товаров</button>
-                    <button class="admin-tab" onclick="switchAdminTab('custom')">Индивид. запросы</button>
-                    <button class="admin-tab" onclick="switchAdminTab('users')">Пользователи</button>
+                    <button class="admin-tab active" data-admin-tab="moderation">Модерация товаров</button>
+                    <button class="admin-tab" data-admin-tab="custom">Индивид. запросы</button>
+                    <button class="admin-tab" data-admin-tab="users">Пользователи</button>
                 </div>
             </div>
 
@@ -296,15 +296,15 @@
     <!-- Модальное окно авторизации -->
     <div class="modal" id="auth-modal">
         <div class="modal-content">
-            <span class="modal-close" onclick="closeModal()">&times;</span>
-            
+            <span class="modal-close" data-action="close-modal">&times;</span>
+
             <!-- Форма входа -->
             <div id="login-form" class="auth-form">
                 <h2>Вход</h2>
                 <input type="email" id="login-email" placeholder="Email">
                 <input type="password" id="login-password" placeholder="Пароль">
-                <button class="btn-signup" onclick="login()">Войти</button>
-                <p class="form-switch">Нет аккаунта? <a href="#" onclick="switchForm('register')">Зарегистрироваться</a></p>
+                <button class="btn-signup" data-action="login">Войти</button>
+                <p class="form-switch">Нет аккаунта? <a href="#" data-action="switch-form" data-form="register">Зарегистрироваться</a></p>
                 <p class="form-hint-admin">🔑 Админ: admin@studentmarket.ru / admin123</p>
             </div>
 
@@ -314,8 +314,8 @@
                 <input type="text" id="register-name" placeholder="Имя">
                 <input type="email" id="register-email" placeholder="Email">
                 <input type="password" id="register-password" placeholder="Пароль">
-                <button class="btn-signup" onclick="register()">Зарегистрироваться</button>
-                <p class="form-switch">Есть аккаунт? <a href="#" onclick="switchForm('login')">Войти</a></p>
+                <button class="btn-signup" data-action="register">Зарегистрироваться</button>
+                <p class="form-switch">Есть аккаунт? <a href="#" data-action="switch-form" data-form="login">Войти</a></p>
             </div>
         </div>
     </div>
@@ -323,7 +323,7 @@
     <!-- Модальное окно загрузки файла -->
     <div class="modal" id="upload-modal">
         <div class="modal-content">
-            <span class="modal-close" onclick="closeUploadModal()">&times;</span>
+            <span class="modal-close" data-action="close-upload-modal">&times;</span>
             <h2>📤 Загрузка работы</h2>
             <input type="hidden" id="upload-purchase-id">
             <input type="hidden" id="upload-seller-id">
@@ -332,15 +332,15 @@
                 <label style="display: block; margin-bottom: 10px;">Выберите файл:</label>
                 <input type="file" id="upload-file" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px;">
             </div>
-            <button class="btn-signup" onclick="uploadWorkFile()" style="width: 100%; margin-bottom: 10px;">Загрузить файл</button>
-            <button class="btn-contact-seller" onclick="contactSellerFromModal()" style="width: 100%;">📝 Написать покупателю</button>
+            <button class="btn-signup" data-action="upload-work-file" style="width: 100%; margin-bottom: 10px;">Загрузить файл</button>
+            <button class="btn-contact-seller" data-action="contact-seller-from-modal" style="width: 100%;">📝 Написать покупателю</button>
         </div>
     </div>
 
     <!-- Модальное окно отзыва -->
     <div class="modal" id="review-modal">
         <div class="modal-content">
-            <span class="modal-close" onclick="closeReviewModal()">&times;</span>
+            <span class="modal-close" data-action="close-review-modal">&times;</span>
             <h2>✎ Отзыв о покупке</h2>
             <input type="hidden" id="review-purchase-id">
             <input type="hidden" id="review-seller-id">
@@ -359,14 +359,14 @@
                 <label style="display: block; margin-bottom: 10px;">Комментарий:</label>
                 <textarea id="review-comment" rows="4" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; resize: vertical;" placeholder="Напишите ваш отзыв..."></textarea>
             </div>
-            <button class="btn-signup" onclick="submitReview()" style="width: 100%;">Отправить отзыв</button>
+            <button class="btn-signup" data-action="submit-review" style="width: 100%;">Отправить отзыв</button>
         </div>
     </div>
 
     <!-- Модальное окно подтверждения покупки -->
     <div class="modal" id="confirm-purchase-modal">
         <div class="modal-content">
-            <span class="modal-close" onclick="closePurchaseConfirmModal()">&times;</span>
+            <span class="modal-close" data-action="close-purchase-confirm-modal">&times;</span>
             <h2>✓ Подтверждение покупки</h2>
             <p style="margin: 20px 0;">Вы собираетесь купить работу:</p>
             <p style="font-weight: bold; font-size: 1.1em;" id="confirm-product-title"></p>
@@ -374,10 +374,10 @@
             <p style="margin: 10px 0;">Ваш баланс: <strong id="confirm-user-balance"></strong> ₽</p>
             <p style="margin: 10px 0;">Остаток после покупки: <strong id="confirm-balance-after"></strong> ₽</p>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn-signup" onclick="confirmPurchase()" style="flex: 1;">Подтвердить</button>
-                <button class="btn-reject" onclick="closePurchaseConfirmModal()" style="flex: 1;">Отмена</button>
+                <button class="btn-signup" data-action="confirm-purchase" style="flex: 1;">Подтвердить</button>
+                <button class="btn-reject" data-action="close-purchase-confirm-modal" style="flex: 1;">Отмена</button>
             </div>
-            <button class="btn-contact-seller" onclick="contactSellerFromConfirm()" style="width: 100%; margin-top: 15px;">💬 Написать продавцу</button>
+            <button class="btn-contact-seller" data-action="contact-seller-from-confirm" style="width: 100%; margin-top: 15px;">💬 Написать продавцу</button>
         </div>
     </div>
 
