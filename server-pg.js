@@ -244,14 +244,18 @@ async function initDatabase() {
         )`);
 
         const adminExists = await pool.query("SELECT * FROM users WHERE email = $1", ['admin@studentmarket.ru']);
+        const hashedPassword = await bcrypt.hash('admin123', 10);
         if (adminExists.rows.length === 0) {
-            const hashedPassword = await bcrypt.hash('admin123', 10);
             await pool.query(
-                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`, 
+                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 ['admin', 'Администратор', 'admin@studentmarket.ru', hashedPassword, 10000, true, false]
             );
             console.log('✅ Администратор создан');
+        } else {
+            // Обновляем пароль админа на случай если хеш устарел
+            await pool.query("UPDATE users SET password = $1 WHERE email = $2", [hashedPassword, 'admin@studentmarket.ru']);
+            console.log('✅ Пароль администратора обновлён');
         }
         console.log('🎉 База данных инициализирована!');
     } catch (error) {
