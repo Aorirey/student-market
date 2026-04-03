@@ -116,6 +116,8 @@ async function register() {
     const email = document.getElementById('register-email').value;
     const password = document.getElementById('register-password').value;
 
+    console.log('[REGISTER] Попытка регистрации:', { name, email, passwordLen: password ? password.length : 0 });
+
     if (!name || !email || !password) {
         showToast('Ошибка', 'Заполните все поля!', 'error');
         return;
@@ -129,13 +131,19 @@ async function register() {
     }
 
     try {
+        const body = JSON.stringify({ name, email, password });
+        console.log('[REGISTER] Отправка тела:', body);
+
         const response = await fetch(`${API_URL}/users/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password })
+            body: body
         });
 
+        console.log('[REGISTER] Ответ сервера:', response.status);
+
         const data = await response.json();
+        console.log('[REGISTER] Данные ответа:', data);
 
         if (!response.ok) {
             showToast('Ошибка', data.error || 'Ошибка регистрации', 'error');
@@ -156,7 +164,7 @@ async function register() {
         showToast('Успешно', 'Регистрация успешна!', 'success');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
-        console.error(error);
+        console.error('[REGISTER] Ошибка:', error);
     }
 }
 

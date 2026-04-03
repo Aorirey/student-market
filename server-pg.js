@@ -105,6 +105,9 @@ app.use(express.static(path.join(__dirname)));
 const validate = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+        const errorDetails = errors.array().map(e => ({ field: e.path, msg: e.msg, value: req.body[e.path] }));
+        console.log(`[VALIDATE] Ошибка валидации:`, JSON.stringify(errorDetails));
+        console.log(`[VALIDATE] Тело запроса:`, JSON.stringify(req.body));
         return res.status(400).json({ error: 'Ошибка валидации', details: errors.array().map(e => e.msg) });
     }
     next();
