@@ -298,24 +298,15 @@
         <div class="modal-content">
             <span class="modal-close" data-action="close-modal">&times;</span>
 
-            <!-- Форма входа -->
-            <div id="login-form" class="auth-form">
-                <h2>Вход</h2>
-                <input type="email" id="login-email" placeholder="Email">
-                <input type="password" id="login-password" placeholder="Пароль">
-                <button class="btn-signup" data-action="login">Войти</button>
-                <p class="form-switch">Нет аккаунта? <a href="#" data-action="switch-form" data-form="register">Зарегистрироваться</a></p>
-                <p class="form-hint-admin">🔑 Админ: admin@studentmarket.ru / admin123</p>
-            </div>
-
-            <!-- Форма регистрации -->
-            <div id="register-form" class="auth-form" style="display: none;">
-                <h2>Регистрация</h2>
-                <input type="text" id="register-name" placeholder="Имя">
-                <input type="email" id="register-email" placeholder="Email">
-                <input type="password" id="register-password" placeholder="Пароль">
-                <button class="btn-signup" data-action="register">Зарегистрироваться</button>
-                <p class="form-switch">Есть аккаунт? <a href="#" data-action="switch-form" data-form="login">Войти</a></p>
+            <!-- Telegram Login Widget -->
+            <div id="telegram-auth" class="auth-form">
+                <h2>Вход через Telegram</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; text-align: center;">Войдите с помощью вашего Telegram аккаунта</p>
+                <div id="telegram-login-widget" style="display: flex; justify-content: center;"></div>
+                <div id="telegram-loading" style="display: none; text-align: center; padding: 20px;">
+                    <p>⏳ Загрузка виджета Telegram...</p>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 10px;">Если виджет не появился — проверьте настройки бота</p>
+                </div>
             </div>
         </div>
     </div>

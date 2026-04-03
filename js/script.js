@@ -73,29 +73,130 @@ function updateThemeIcon(theme) {
     }
 }
 
-// ==================== АВТОРИЗАЦИЯ ====================
+// ==================== TELEGRAM AUTH ====================
+
+// Загрузка Telegram Login Widget
+async function loadTelegramWidget() {
+    const container = document.getElementById('telegram-login-widget');
+    if (!container) return;
+
+    // Показываем загрузку
+    document.getElementById('telegram-loading').style.display = 'block';
+
+    // Если скрипт уже загружен — не добавляем повторно
+    if (document.getElementById('telegram-widget-script')) {
+        document.getElementById('telegram-loading').style.display = 'none';
+        return;
+    }
+
+    try {
+        // Получаем username бота с сервера
+        const response = await fetch(`${API_URL}/config/telegram`);
+        const config = await response.json();
+
+        if (!config.botUsername) {
+            document.getElementById('telegram-loading').innerHTML = `
+                <p style="color: var(--warning);">⚠️ Telegram бот не настроен</p>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 10px;">
+                    Владелец сайта должен добавить TELEGRAM_BOT_USERNAME в настройки Render
+                </p>
+            `;
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.id = 'telegram-widget-script';
+        script.src = 'https://telegram.org/js/telegram-widget.js?22';
+        script.setAttribute('data-telegram-login', config.botUsername);
+        script.setAttribute('data-size', 'large');
+        script.setAttribute('data-radius', '10');
+        script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+        script.setAttribute('data-request-access', 'write');
+
+        script.onload = () => {
+            document.getElementById('telegram-loading').style.display = 'none';
+        };
+
+        script.onerror = () => {
+            document.getElementById('telegram-loading').innerHTML = `
+                <p style="color: var(--danger);">❌ Не удалось загрузить виджет Telegram</p>
+                <p style="font-size: 0.85rem; color: var(--text-secondary);">Проверьте настройки бота у @BotFather</p>
+            `;
+        };
+
+        container.appendChild(script);
+    } catch (error) {
+        console.error('[TELEGRAM] Ошибка загрузки конфигурации:', error);
+        document.getElementById('telegram-loading').innerHTML = `
+            <p style="color: var(--danger);">❌ Ошибка загрузки</p>
+        `;
+    }
+}
+
+// Callback при успешной авторизации через Telegram
+window.onTelegramAuth = async function(user) {
+    console.log('[TELEGRAM] Данные от виджета:', user);
+
+    try {
+        const response = await fetch(`${API_URL}/auth/telegram`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+
+        const data = await response.json();
+        console.log('[TELEGRAM] Ответ сервера:', response.status, data);
+
+        if (!response.ok) {
+            showToast('Ошибка', data.error || 'Ошибка входа через Telegram', 'error');
+            return;
+        }
+
+        // Сохраняем сессию
+        currentUser = data;
+        sessionStorage.setItem('currentUser', JSON.stringify(data));
+
+        closeModal();
+        checkAuth();
+        showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+        console.error('[TELEGRAM] Ошибка:', error);
+    }
+};
+
+// Старые функции (оставлены для совместимости, но не используются)
 
 // Проверка авторизации
 async function checkAuth() {
     const authButtons = document.getElementById('auth-buttons');
     const userMenu = document.getElementById('user-menu');
     const btnAdmin = document.getElementById('btn-admin');
+    const userName = document.getElementById('user-name');
 
     if (currentUser) {
         authButtons.style.display = 'none';
         userMenu.style.display = 'flex';
-        document.getElementById('user-name').textContent = currentUser.name;
-        document.getElementById('user-balance').textContent = currentUser.balance || 10000;
+        if (userName) userName.textContent = currentUser.name;
+        const balanceEl = document.getElementById('user-balance');
+        if (balanceEl) balanceEl.textContent = currentUser.balance || 10000;
 
         if (currentUser.isAdmin) {
             btnAdmin.style.display = 'block';
         } else {
             btnAdmin.style.display = 'none';
         }
-        
+
+        // Показываем аватар Telegram если есть
+        if (currentUser.photoUrl) {
+            if (userName) {
+                userName.innerHTML = `<img src="${currentUser.photoUrl}" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:8px;">${currentUser.name}`;
+            }
+        }
+
         // Загружаем уведомления
         loadNotifications();
-        
+
         // Автообновление уведомлений каждые 5 секунд
         if (notificationInterval) clearInterval(notificationInterval);
         notificationInterval = setInterval(loadNotifications, 5000);
@@ -223,25 +324,12 @@ function logout() {
 function openModal(type) {
     const modal = document.getElementById('auth-modal');
     modal.classList.add('active');
-    switchForm(type);
+    loadTelegramWidget();
 }
 
 function closeModal() {
     const modal = document.getElementById('auth-modal');
     modal.classList.remove('active');
-}
-
-function switchForm(type) {
-    const loginForm = document.getElementById('login-form');
-    const registerForm = document.getElementById('register-form');
-
-    if (type === 'login') {
-        loginForm.style.display = 'block';
-        registerForm.style.display = 'none';
-    } else {
-        loginForm.style.display = 'none';
-        registerForm.style.display = 'block';
-    }
 }
 
 // ==================== УВЕДОМЛЕНИЯ ====================
@@ -2290,14 +2378,9 @@ function setupEventListeners() {
             case 'close-modal':
                 closeModal();
                 break;
-            case 'login':
-                login();
-                break;
-            case 'switch-form':
-                switchForm(target.dataset.form);
-                break;
             case 'register':
-                register();
+                // Не используется — авторизация через Telegram
+                showToast('Информация', 'Используйте вход через Telegram', 'info');
                 break;
             case 'close-upload-modal':
                 closeUploadModal();

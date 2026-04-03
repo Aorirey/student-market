@@ -7,6 +7,7 @@ const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 const { body, param, query, validationResult } = require('express-validator');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -105,10 +106,11 @@ app.use(express.static(path.join(__dirname)));
 const validate = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        const errorDetails = errors.array().map(e => ({ field: e.path, msg: e.msg, value: req.body[e.path] }));
-        console.log(`[VALIDATE] Ошибка валидации:`, JSON.stringify(errorDetails));
-        console.log(`[VALIDATE] Тело запроса:`, JSON.stringify(req.body));
-        return res.status(400).json({ error: 'Ошибка валидации', details: errors.array().map(e => e.msg) });
+        const errorArr = errors.array();
+        console.log(`[VALIDATE] Ошибка! Полей: ${errorArr.length}`);
+        console.log(`[VALIDATE] Body: ${JSON.stringify(req.body)}`);
+        errorArr.forEach(e => console.log(`  - ${e.path}: ${e.msg}`));
+        return res.status(400).json({ error: 'Ошибка валидации', details: errorArr.map(e => e.msg) });
     }
     next();
 };
@@ -156,17 +158,23 @@ async function initDatabase() {
 
     try {
         await pool.query(`CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY, 
-            name TEXT NOT NULL, 
-            email TEXT UNIQUE NOT NULL, 
-            password TEXT NOT NULL, 
-            balance INTEGER DEFAULT 10000, 
-            is_admin BOOLEAN DEFAULT false, 
-            is_blocked BOOLEAN DEFAULT false, 
-            rating REAL DEFAULT 0, 
-            review_count INTEGER DEFAULT 0, 
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            balance INTEGER DEFAULT 10000,
+            is_admin BOOLEAN DEFAULT false,
+            is_blocked BOOLEAN DEFAULT false,
+            rating REAL DEFAULT 0,
+            review_count INTEGER DEFAULT 0,
+            telegram_id BIGINT UNIQUE,
+            photo_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // Миграция: добавляем колонки если их нет (для существующих БД)
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT UNIQUE`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`);
         
         await pool.query(`CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY, 
@@ -491,9 +499,112 @@ app.delete('/api/users/:id', userIdValidator, async (req, res) => {
         await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
         console.log(`[AUDIT] Удалён пользователь: ${req.params.id}`);
         res.json({ message: 'Пользователь удалён' });
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка удаления:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ============================================
+// TELEGRAM AUTH
+// ============================================
+
+// Получить username бота для виджета
+app.get('/api/config/telegram', (req, res) => {
+    res.json({
+        botUsername: process.env.TELEGRAM_BOT_USERNAME || null
+    });
+});
+
+// Верификация данных от Telegram Login Widget
+function verifyTelegramAuth(data, botToken) {
+    const { hash, ...checkData } = data;
+    const dataCheckString = Object.keys(checkData)
+        .sort()
+        .map(key => `${key}=${checkData[key]}`)
+        .join('\n');
+
+    const secretKey = crypto.createHash('sha256').update(botToken).digest();
+    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+
+    return calculatedHash === hash;
+}
+
+app.post('/api/auth/telegram', async (req, res) => {
+    try {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        if (!botToken) {
+            console.error('[TELEGRAM] TELEGRAM_BOT_TOKEN не установлен');
+            return res.status(500).json({ error: 'Telegram auth не настроен' });
+        }
+
+        const telegramData = req.body;
+        console.log(`[TELEGRAM] Попытка входа: id=${telegramData.id}, username=${telegramData.username}`);
+
+        // Проверяем HMAC-подпись
+        if (!verifyTelegramAuth(telegramData, botToken)) {
+            console.log('[TELEGRAM] Неверная подпись');
+            return res.status(401).json({ error: 'Неверная подпись Telegram' });
+        }
+
+        // Проверяем что данные не старше 24 часов
+        const authDate = parseInt(telegramData.auth_date);
+        const now = Math.floor(Date.now() / 1000);
+        if (now - authDate > 86400) {
+            console.log('[TELEGRAM] Данные устарели');
+            return res.status(401).json({ error: 'Данные авторизации устарели' });
+        }
+
+        // Ищем или создаём пользователя
+        const telegramId = telegramData.id;
+        const username = telegramData.username || telegramData.first_name || `user_${telegramId}`;
+        const firstName = telegramData.first_name || '';
+        const lastName = telegramData.last_name || '';
+        const photoUrl = telegramData.photo_url || null;
+        const fullName = `${firstName} ${lastName}`.trim() || username;
+
+        let result = await pool.query("SELECT * FROM users WHERE telegram_id = $1", [telegramId]);
+
+        if (result.rows.length === 0) {
+            // Новый пользователь — создаём
+            const hashedPassword = await bcrypt.hash(uuidv4(), 10); // Случайный пароль
+            const newId = uuidv4();
+            result = await pool.query(
+                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, telegram_id, photo_url)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 RETURNING id, name, email, balance, is_admin, is_blocked, telegram_id, photo_url`,
+                [newId, sanitizeHTML(fullName), `${telegramId}@telegram.user`, hashedPassword, 10000, false, false, telegramId, photoUrl]
+            );
+            console.log(`[TELEGRAM] Создан новый пользователь: ${fullName}`);
+        } else {
+            // Обновляем имя и фото
+            await pool.query(
+                "UPDATE users SET name = $1, photo_url = $2 WHERE telegram_id = $3",
+                [sanitizeHTML(fullName), photoUrl, telegramId]
+            );
+            console.log(`[TELEGRAM] Вход существующего пользователя: ${fullName}`);
+        }
+
+        const user = result.rows[0];
+        if (user.is_blocked) {
+            console.log(`[TELEGRAM] Заблокирован: ${fullName}`);
+            return res.status(403).json({ error: 'Аккаунт заблокирован' });
+        }
+
+        console.log(`[TELEGRAM] Успешный вход: ${fullName}`);
+        res.json({
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            balance: user.balance,
+            isAdmin: user.is_admin,
+            isBlocked: user.is_blocked,
+            telegramId: user.telegram_id,
+            photoUrl: user.photo_url
+        });
+    } catch (error) {
+        console.error('[TELEGRAM] Ошибка:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
     }
 });
 
