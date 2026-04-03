@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const { body, param, query, validationResult } = require('express-validator');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -148,7 +149,11 @@ if (dbMode === 'postgres') {
         }
 
         // Создание таблиц
-        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, telegram_id BIGINT UNIQUE, photo_url TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+
+        // Миграция для существующих БД
+        try { db.run(`ALTER TABLE users ADD COLUMN telegram_id BIGINT UNIQUE`); } catch(e) {}
+        try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
         db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0)`);
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -442,20 +447,91 @@ if (dbMode === 'postgres') {
 
     app.delete('/api/users/:id', userIdValidator, (req, res) => {
         try {
-            // Проверка: нельзя удалить админа
             const userResult = db.exec("SELECT isAdmin FROM users WHERE id = ?", [req.params.id]);
             if (userResult.length > 0 && userResult[0].values.length > 0 && userResult[0].values[0][0] === 1) {
                 return res.status(403).json({ error: 'Нельзя удалить администратора' });
             }
-            
             db.run("DELETE FROM users WHERE id = ?", [req.params.id]);
             saveDatabase();
-            
             console.log(`[AUDIT] Пользователь удален: ${req.params.id}`);
             res.json({ message: 'Пользователь удалён' });
-        } catch (error) { 
+        } catch (error) {
             console.error('Ошибка удаления:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // ============================================
+    // TELEGRAM AUTH (для локальной разработки)
+    // ============================================
+
+    app.get('/api/config/telegram', (req, res) => {
+        res.json({
+            botUsername: process.env.TELEGRAM_BOT_USERNAME || null
+        });
+    });
+
+    function verifyTelegramAuth(data, botToken) {
+        const { hash, ...checkData } = data;
+        const dataCheckString = Object.keys(checkData)
+            .sort()
+            .map(key => `${key}=${checkData[key]}`)
+            .join('\n');
+        const secretKey = crypto.createHash('sha256').update(botToken).digest();
+        const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+        return calculatedHash === hash;
+    }
+
+    app.post('/api/auth/telegram', async (req, res) => {
+        try {
+            const botToken = process.env.TELEGRAM_BOT_TOKEN;
+            if (!botToken) {
+                return res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN не установлен' });
+            }
+            const telegramData = req.body;
+            if (!verifyTelegramAuth(telegramData, botToken)) {
+                return res.status(401).json({ error: 'Неверная подпись' });
+            }
+            const authDate = parseInt(telegramData.auth_date);
+            const now = Math.floor(Date.now() / 1000);
+            if (now - authDate > 86400) {
+                return res.status(401).json({ error: 'Данные устарели' });
+            }
+            const telegramId = telegramData.id;
+            const firstName = telegramData.first_name || '';
+            const lastName = telegramData.last_name || '';
+            const username = telegramData.username || `user_${telegramId}`;
+            const photoUrl = telegramData.photo_url || null;
+            const fullName = `${firstName} ${lastName}`.trim() || username;
+
+            let result = db.exec("SELECT * FROM users WHERE telegram_id = ?", [telegramId]);
+
+            if (result.length === 0 || result[0].values.length === 0) {
+                const hashedPassword = await bcrypt.hash(uuidv4(), 10);
+                const newId = uuidv4();
+                db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, telegram_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [newId, sanitizeHTML(fullName), `${telegramId}@telegram.user`, hashedPassword, 10000, 0, 0, telegramId]);
+                saveDatabase();
+                result = db.exec("SELECT * FROM users WHERE id = ?", [newId]);
+                console.log(`[TELEGRAM] Создан: ${fullName}`);
+            } else {
+                console.log(`[TELEGRAM] Вход: ${fullName}`);
+            }
+
+            const row = result[0].values[0];
+            res.json({
+                id: sanitizeHTML(row[0]),
+                name: sanitizeHTML(row[1]),
+                email: sanitizeHTML(row[2]),
+                balance: row[4],
+                isAdmin: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                telegramId: row[7] || telegramId,
+                photoUrl: photoUrl
+            });
+        } catch (error) {
+            console.error('[TELEGRAM] Ошибка:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
 
