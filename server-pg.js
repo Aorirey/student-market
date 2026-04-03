@@ -35,8 +35,8 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://telegram.org"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
-            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-            connectSrc: ["'self'", '*', 'blob:', 'data:'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:', 'https://telegram.org'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://telegram.org', 'https://api.telegram.org', 'https://oauth.telegram.org'],
             fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
@@ -104,17 +104,25 @@ app.use('/js', express.static(path.join(__dirname, 'js')));
 
 // Главная страница — внедряем Telegram виджет
 app.get('/', (req, res) => {
-    let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-    const widgetHtml = botUsername
-        ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">` +
-          `<script src="https://telegram.org/js/telegram-widget.js?22" ` +
-          `data-telegram-login="${botUsername}" data-size="large" data-radius="10" ` +
-          `data-onauth="onTelegramAuth(user)" data-request-access="write"><\/script></div>`
-        : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
-          `<p>Виджет Telegram не настроен</p></div>`;
-    html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
-    res.send(html);
+    console.log('[INDEX] GET / запрошен');
+    try {
+        let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
+        console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
+        const widgetHtml = botUsername
+            ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">` +
+              `<script src="https://telegram.org/js/telegram-widget.js?22" ` +
+              `data-telegram-login="${botUsername}" data-size="large" data-radius="10" ` +
+              `data-onauth="onTelegramAuth(user)" data-request-access="write"><\/script></div>`
+            : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
+              `<p>Виджет Telegram не настроен</p></div>`;
+        html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
+        console.log('[INDEX] HTML отправлен');
+        res.send(html);
+    } catch (err) {
+        console.error('[INDEX] Ошибка:', err.message);
+        res.send('Ошибка сервера');
+    }
 });
 
 // ============================================
@@ -1053,5 +1061,7 @@ initDatabase().then(() => {
         console.log(`📡 API: http://localhost:${PORT}/api`);
         console.log(`🔒 Trust proxy: включён`);
         console.log(`🌍 ENV: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`📱 TELEGRAM_BOT_USERNAME: ${process.env.TELEGRAM_BOT_USERNAME || 'НЕ УСТАНОВЛЕН'}`);
+        console.log(`📱 TELEGRAM_BOT_TOKEN: ${process.env.TELEGRAM_BOT_TOKEN ? 'установлен (длина: ' + process.env.TELEGRAM_BOT_TOKEN.length + ')' : 'НЕ УСТАНОВЛЕН'}`);
     });
 });
