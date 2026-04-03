@@ -170,6 +170,8 @@ async function login() {
         return;
     }
 
+    console.log('[LOGIN] Попытка входа:', email, 'API_URL:', API_URL);
+
     try {
         const response = await fetch(`${API_URL}/users/login`, {
             method: 'POST',
@@ -177,7 +179,10 @@ async function login() {
             body: JSON.stringify({ email, password })
         });
 
+        console.log('[LOGIN] Ответ сервера:', response.status);
+
         const data = await response.json();
+        console.log('[LOGIN] Данные ответа:', data);
 
         if (!response.ok) {
             showToast('Ошибка', data.error || 'Неверный email или пароль', 'error');
@@ -192,7 +197,7 @@ async function login() {
         showToast('Успешно', 'Вход успешен!', 'success');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
-        console.error(error);
+        console.error('[LOGIN] Ошибка:', error);
     }
 }
 
