@@ -1,4 +1,6 @@
 /* --- CSS СТИЛИ --- */
+/* Шрифты Pragmatica Next временно отключены (файлы отсутствуют) */
+/*
 @font-face {
     font-family: 'Pragmatica Next';
     src: url('../fonts/PragmaticaNext-Regular.woff2') format('woff2'),
@@ -16,6 +18,7 @@
     font-style: normal;
     font-display: swap;
 }
+*/
 
 :root {
     --primary-blue: #2563eb;
@@ -58,6 +61,7 @@
 }
 
 body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
     color: var(--text-main);
     display: flex;

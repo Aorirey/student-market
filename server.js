@@ -30,11 +30,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-hashes'", "'unsafe-eval'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
             connectSrc: ["'self'", '*'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:'],
             frameSrc: ["'none'"]
