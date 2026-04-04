@@ -40,7 +40,7 @@ app.use(helmet({
             fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
-            frameSrc: ["'none'", "https://oauth.telegram.org"],
+            frameSrc: ["https://oauth.telegram.org"],
             workerSrc: ["'self'", 'blob:']
         }
     },
@@ -102,18 +102,42 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 
-// Главная страница — внедряем Telegram виджет
+// Главная страница — внедряем Telegram виджет с отложенной загрузкой
 app.get('/', (req, res) => {
     console.log('[INDEX] GET / запрошен');
     try {
         let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
         console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
+        
         const widgetHtml = botUsername
-            ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;">` +
-              `<script src="https://telegram.org/js/telegram-widget.js?22" ` +
-              `data-telegram-login="${botUsername}" data-size="large" data-radius="10" ` +
-              `data-onauth="onTelegramAuth(user)" data-request-access="write"><\/script></div>`
+            ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">` +
+              `<div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>` +
+              `<div id="telegram-widget-container"></div>` +
+              `<script>` +
+              `(function() {` +
+              `  var container = document.getElementById('telegram-widget-container');` +
+              `  var loading = document.getElementById('telegram-widget-loading');` +
+              `  var timeout = setTimeout(function() {` +
+              `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
+              `    if (container) container.style.display = 'none';` +
+              `  }, 5000);` +
+              `  var script = document.createElement('script');` +
+              `  script.src = 'https://telegram.org/js/telegram-widget.js?22';` +
+              `  script.setAttribute('data-telegram-login', '${botUsername}');` +
+              `  script.setAttribute('data-size', 'large');` +
+              `  script.setAttribute('data-radius', '10');` +
+              `  script.setAttribute('data-onauth', 'onTelegramAuth(user)');` +
+              `  script.setAttribute('data-request-access', 'write');` +
+              `  script.setAttribute('async', '');` +
+              `  script.onload = function() { if (loading) loading.style.display = 'none'; };` +
+              `  script.onerror = function() {` +
+              `    clearTimeout(timeout);` +
+              `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
+              `  };` +
+              `  document.body.appendChild(script);` +
+              `})();` +
+              `<\/script></div>`
             : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
               `<p>Виджет Telegram не настроен</p></div>`;
         html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
