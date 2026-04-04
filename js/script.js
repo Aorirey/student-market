@@ -2620,4 +2620,170 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Настраиваем event listeners (CSP-safe)
     setupEventListeners();
+
+    // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
+    
+    // Переключение вкладок Email/Telegram
+    const authTabs = document.querySelectorAll('.auth-tab');
+    const emailAuth = document.getElementById('email-auth');
+    const telegramAuth = document.getElementById('telegram-auth');
+
+    authTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.authTab;
+            
+            // Обновляем стили вкладок
+            authTabs.forEach(t => {
+                t.classList.remove('active');
+                t.style.background = 'var(--border-color)';
+                t.style.color = 'var(--text-main)';
+            });
+            tab.classList.add('active');
+            tab.style.background = 'var(--primary-blue)';
+            tab.style.color = 'white';
+
+            // Показываем нужную форму
+            if (tabName === 'email') {
+                emailAuth.style.display = 'block';
+                telegramAuth.style.display = 'none';
+            } else {
+                emailAuth.style.display = 'none';
+                telegramAuth.style.display = 'block';
+            }
+        });
+    });
+
+    // Переключение вход/регистрация
+    const loginBtn = document.getElementById('login-btn');
+    const registerBtn = document.getElementById('register-btn');
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            loginBtn.classList.add('active');
+            loginBtn.style.background = 'var(--primary-blue)';
+            loginBtn.style.color = 'white';
+            registerBtn.classList.remove('active');
+            registerBtn.style.background = 'var(--border-color)';
+            registerBtn.style.color = 'var(--text-main)';
+            loginForm.style.display = 'block';
+            registerForm.style.display = 'none';
+        });
+    }
+
+    if (registerBtn) {
+        registerBtn.addEventListener('click', () => {
+            registerBtn.classList.add('active');
+            registerBtn.style.background = 'var(--primary-blue)';
+            registerBtn.style.color = 'white';
+            loginBtn.classList.remove('active');
+            loginBtn.style.background = 'var(--border-color)';
+            loginBtn.style.color = 'var(--text-main)';
+            loginForm.style.display = 'none';
+            registerForm.style.display = 'block';
+        });
+    }
+
+    // Обработка формы входа
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            if (!email || !password) {
+                showToast('Ошибка', 'Заполните все поля!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showToast('Ошибка', data.error || 'Неверный email или пароль', 'error');
+                    return;
+                }
+
+                // Сохраняем сессию
+                currentUser = data;
+                sessionStorage.setItem('currentUser', JSON.stringify(data));
+
+                // Очистка формы
+                loginForm.reset();
+
+                closeModal();
+                checkAuth();
+                showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
+            } catch (error) {
+                showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                console.error('[LOGIN] Ошибка:', error);
+            }
+        });
+    }
+
+    // Обработка формы регистрации
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('register-name').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            if (!name || !email || !password) {
+                showToast('Ошибка', 'Заполните все поля!', 'error');
+                return;
+            }
+
+            // Проверка email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showToast('Ошибка', 'Введите корректный email адрес', 'error');
+                return;
+            }
+
+            // Проверка длины пароля
+            if (password.length < 6) {
+                showToast('Ошибка', 'Пароль должен быть не менее 6 символов', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showToast('Ошибка', data.error || 'Ошибка регистрации', 'error');
+                    return;
+                }
+
+                // Сохраняем сессию
+                currentUser = data;
+                sessionStorage.setItem('currentUser', JSON.stringify(data));
+
+                // Очистка формы
+                registerForm.reset();
+
+                closeModal();
+                checkAuth();
+                showToast('Успешно', `Регистрация успешна! Добро пожаловать, ${data.name}!`, 'success');
+            } catch (error) {
+                showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                console.error('[REGISTER] Ошибка:', error);
+            }
+        });
+    }
 });

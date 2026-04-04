@@ -579,6 +579,115 @@ function verifyTelegramAuth(data, botToken) {
     return calculatedHash === hash;
 }
 
+// ============================================
+// АВТОРИЗАЦИЯ: Email/пароль
+// ============================================
+
+// Регистрация нового пользователя
+app.post('/api/auth/register', [
+    body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Имя: 2-50 символов'),
+    body('email').isEmail().withMessage('Неверный формат email'),
+    body('password').isLength({ min: 6 }).withMessage('Пароль: мин. 6 символов')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ error: errors.array()[0].msg });
+        }
+
+        const { name, email, password } = req.body;
+        console.log(`[AUTH] Попытка регистрации: ${email}`);
+
+        // Проверяем, существует ли пользователь
+        const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email.toLowerCase()]);
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+        }
+
+        // Хешируем пароль
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newId = uuidv4();
+
+        // Создаём пользователя
+        await pool.query(
+            `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, telegram_id, photo_url)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [newId, sanitizeHTML(name), email.toLowerCase(), hashedPassword, 10000, false, false, null, null]
+        );
+
+        console.log(`[AUTH] Регистрация успешна: ${email}`);
+        res.status(201).json({
+            id: newId,
+            name: sanitizeHTML(name),
+            email: email.toLowerCase(),
+            balance: 10000,
+            isAdmin: false,
+            isBlocked: false,
+            photoUrl: null
+        });
+    } catch (error) {
+        console.error('[AUTH] Ошибка регистрации:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Вход пользователя
+app.post('/api/auth/login', [
+    body('email').isEmail().withMessage('Неверный формат email'),
+    body('password').notEmpty().withMessage('Введите пароль')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ error: errors.array()[0].msg });
+        }
+
+        const { email, password } = req.body;
+        console.log(`[AUTH] Попытка входа: ${email}`);
+
+        // Ищем пользователя
+        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
+        if (result.rows.length === 0) {
+            console.log(`[AUTH] Пользователь не найден: ${email}`);
+            return res.status(401).json({ error: 'Неверный email или пароль' });
+        }
+
+        const user = result.rows[0];
+
+        // Проверяем пароль
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+            console.log(`[AUTH] Неверный пароль: ${email}`);
+            return res.status(401).json({ error: 'Неверный email или пароль' });
+        }
+
+        // Проверяем блокировку
+        if (user.is_blocked) {
+            console.log(`[AUTH] Заблокирован: ${email}`);
+            return res.status(403).json({ error: 'Аккаунт заблокирован' });
+        }
+
+        console.log(`[AUTH] Вход успешен: ${email}`);
+        res.json({
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            balance: user.balance,
+            isAdmin: user.is_admin,
+            isBlocked: user.is_blocked,
+            telegramId: user.telegram_id,
+            photoUrl: user.photo_url
+        });
+    } catch (error) {
+        console.error('[AUTH] Ошибка входа:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ============================================
+// АВТОРИЗАЦИЯ: Telegram
+// ============================================
+
 app.post('/api/auth/telegram', async (req, res) => {
     try {
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
