@@ -2623,7 +2623,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
     
-    // Переключение вкладок Email/Telegram
+    // Переключение вкладок Логин/Telegram
     const authTabs = document.querySelectorAll('.auth-tab');
     const emailAuth = document.getElementById('email-auth');
     const telegramAuth = document.getElementById('telegram-auth');
@@ -2643,7 +2643,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tab.style.color = 'white';
 
             // Показываем нужную форму
-            if (tabName === 'email') {
+            if (tabName === 'login') {
                 emailAuth.style.display = 'block';
                 telegramAuth.style.display = 'none';
             } else {
@@ -2690,10 +2690,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const email = document.getElementById('login-email').value;
+            const login = document.getElementById('login-login').value;
             const password = document.getElementById('login-password').value;
 
-            if (!email || !password) {
+            if (!login || !password) {
                 showToast('Ошибка', 'Заполните все поля!', 'error');
                 return;
             }
@@ -2702,13 +2702,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const response = await fetch(`${API_URL}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ login, password })
                 });
 
                 const data = await response.json();
 
                 if (!response.ok) {
-                    showToast('Ошибка', data.error || 'Неверный email или пароль', 'error');
+                    showToast('Ошибка', data.error || 'Неверный логин или пароль', 'error');
                     return;
                 }
 
@@ -2735,18 +2735,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.preventDefault();
             
             const name = document.getElementById('register-name').value;
-            const email = document.getElementById('register-email').value;
+            const login = document.getElementById('register-login').value;
             const password = document.getElementById('register-password').value;
 
-            if (!name || !email || !password) {
+            if (!name || !login || !password) {
                 showToast('Ошибка', 'Заполните все поля!', 'error');
                 return;
             }
 
-            // Проверка email
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                showToast('Ошибка', 'Введите корректный email адрес', 'error');
+            // Проверка логина (только латиница, цифры, _)
+            const loginRegex = /^[a-zA-Z0-9_]+$/;
+            if (!loginRegex.test(login)) {
+                showToast('Ошибка', 'Логин: только латинские буквы, цифры и _', 'error');
+                return;
+            }
+
+            // Проверка длины логина
+            if (login.length < 3 || login.length > 20) {
+                showToast('Ошибка', 'Логин: от 3 до 20 символов', 'error');
                 return;
             }
 
@@ -2760,7 +2766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const response = await fetch(`${API_URL}/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password })
+                    body: JSON.stringify({ name, login, password })
                 });
 
                 const data = await response.json();

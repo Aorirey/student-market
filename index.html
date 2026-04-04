@@ -300,11 +300,11 @@
 
             <!-- Вкладки авторизации -->
             <div class="auth-tabs" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button class="auth-tab active" data-auth-tab="email" style="flex: 1; padding: 10px; border: none; background: var(--primary-blue); color: white; border-radius: 8px; cursor: pointer; font-size: 1rem;">Email</button>
+                <button class="auth-tab active" data-auth-tab="login" style="flex: 1; padding: 10px; border: none; background: var(--primary-blue); color: white; border-radius: 8px; cursor: pointer; font-size: 1rem;">Логин</button>
                 <button class="auth-tab" data-auth-tab="telegram" style="flex: 1; padding: 10px; border: none; background: var(--border-color); color: var(--text-main); border-radius: 8px; cursor: pointer; font-size: 1rem;">Telegram</button>
             </div>
 
-            <!-- Форма входа Email/пароль -->
+            <!-- Форма входа Логин/пароль -->
             <div id="email-auth" class="auth-form">
                 <h2>Вход в аккаунт</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 20px; text-align: center;">Войдите или создайте новый аккаунт</p>
@@ -318,7 +318,7 @@
                 <!-- Форма входа -->
                 <form id="login-form">
                     <div class="form-group">
-                        <input type="email" id="login-email" placeholder="Email" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
+                        <input type="text" id="login-login" placeholder="Логин" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
                     </div>
                     <div class="form-group">
                         <input type="password" id="login-password" placeholder="Пароль" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
@@ -329,10 +329,10 @@
                 <!-- Форма регистрации (скрыта) -->
                 <form id="register-form" style="display: none;">
                     <div class="form-group">
-                        <input type="text" id="register-name" placeholder="Имя" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
+                        <input type="text" id="register-name" placeholder="Ник (отображаемое имя)" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
                     </div>
                     <div class="form-group">
-                        <input type="email" id="register-email" placeholder="Email" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
+                        <input type="text" id="register-login" placeholder="Логин (латиница, цифры)" required pattern="[a-zA-Z0-9_]+" title="Только латинские буквы, цифры и _" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
                     </div>
                     <div class="form-group">
                         <input type="password" id="register-password" placeholder="Пароль (мин. 6 символов)" required minlength="6" style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
