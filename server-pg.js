@@ -226,7 +226,10 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT UNIQUE`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT UNIQUE`);
-        
+
+        // Миграции для products
+        await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+
         await pool.query(`CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY, 
             title TEXT NOT NULL, 
