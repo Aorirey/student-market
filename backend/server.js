@@ -600,21 +600,25 @@ if (dbMode === 'postgres') {
     app.get('/api/products', (req, res) => {
         try {
             const result = db.exec("SELECT * FROM products WHERE status = 'approved'");
-            res.json(result.length > 0 ? result[0].values.map(row => ({ 
-                id: row[0], 
-                title: sanitizeHTML(row[1]), 
-                category: sanitizeHTML(row[2]), 
-                discipline: sanitizeHTML(row[3]), 
-                price: row[4], 
-                sellerId: sanitizeHTML(row[5]), 
-                sellerName: sanitizeHTML(row[6]), 
-                deadline: row[7], 
-                status: sanitizeHTML(row[8]), 
-                createdAt: row[9] 
-            })) : []);
-        } catch (error) { 
+            if (result.length === 0 || result[0].values.length === 0) {
+                return res.json([]);
+            }
+            const products = result[0].values.map(row => ({
+                id: row[0],
+                title: sanitizeHTML(row[1]),
+                category: sanitizeHTML(row[2]),
+                discipline: sanitizeHTML(row[3]),
+                price: row[4],
+                sellerId: sanitizeHTML(row[5]),
+                sellerName: sanitizeHTML(row[6]),
+                deadline: row[7],
+                status: sanitizeHTML(row[8]),
+                createdAt: row[9]
+            }));
+            res.json(products);
+        } catch (error) {
             console.error('Ошибка получения товаров:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
         }
     });
 
