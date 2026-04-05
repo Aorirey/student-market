@@ -309,14 +309,17 @@ async function initDatabase() {
         const hashedPassword = await bcrypt.hash('admin123', 10);
         if (adminExists.rows.length === 0) {
             await pool.query(
-                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                ['admin', 'Администратор', 'admin@studentmarket.ru', hashedPassword, 10000, true, false]
+                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, login)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                ['admin', 'Администратор', 'admin@studentmarket.ru', hashedPassword, 10000, true, false, 'admin']
             );
             console.log('✅ Администратор создан');
         } else {
-            // Обновляем пароль админа на случай если хеш устарел
-            await pool.query("UPDATE users SET password = $1 WHERE email = $2", [hashedPassword, 'admin@studentmarket.ru']);
+            // Обновляем пароль и login админа на случай если данные устарели
+            await pool.query(
+                "UPDATE users SET password = $1, login = COALESCE(login, $2) WHERE email = $3",
+                [hashedPassword, 'admin', 'admin@studentmarket.ru']
+            );
             console.log('✅ Пароль администратора обновлён');
         }
         console.log('🎉 База данных инициализирована!');
@@ -655,11 +658,14 @@ app.post('/api/auth/login', [
         const { login, password } = req.body;
         console.log(`[AUTH] Попытка входа: ${login}`);
 
-        // Ищем пользователя по логину
-        const result = await pool.query("SELECT * FROM users WHERE login = $1", [login.toLowerCase()]);
+        // Ищем пользователя по логину ИЛИ email
+        const result = await pool.query(
+            "SELECT * FROM users WHERE login = $1 OR email = $2",
+            [login.toLowerCase(), login.toLowerCase()]
+        );
         if (result.rows.length === 0) {
             console.log(`[AUTH] Пользователь не найден: ${login}`);
-            return res.status(401).json({ error: 'Неверный логин или пароль' });
+            return res.status(401).json({ error: 'Неверный логин/email или пароль' });
         }
 
         const user = result.rows[0];
