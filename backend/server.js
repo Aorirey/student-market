@@ -91,12 +91,14 @@ app.use(cors({
 // ============================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
+
+const ROOT = path.join(__dirname, '..');
+app.use('/css', express.static(path.join(ROOT, 'css')));
+app.use('/js', express.static(path.join(ROOT, 'js')));
 
 // Главная страница — внедряем Telegram виджет с отложенной загрузкой
 app.get('/', (req, res) => {
-    let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
     
     const widgetHtml = botUsername
@@ -185,7 +187,7 @@ if (dbMode === 'postgres') {
             locateFile: file => path.join(__dirname, 'node_modules', 'sql.js', 'dist', file)
         });
 
-        const dbPath = path.join(__dirname, 'database.sqlite');
+        const dbPath = path.join(ROOT, 'database.sqlite');
         let dbBuffer;
         if (fs.existsSync(dbPath)) {
             dbBuffer = fs.readFileSync(dbPath);
@@ -232,7 +234,7 @@ if (dbMode === 'postgres') {
     function saveDatabase() {
         const data = db.export();
         const buffer = Buffer.from(data);
-        fs.writeFileSync(path.join(__dirname, 'database.sqlite'), buffer);
+        fs.writeFileSync(path.join(ROOT, 'database.sqlite'), buffer);
     }
 
     // ============================================

@@ -99,18 +99,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ============================================
 // СТАТИКА: Раздача CSS, JS, изображений
 // ============================================
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
+const ROOT = path.join(__dirname, '..');
+app.use('/css', express.static(path.join(ROOT, 'css')));
+app.use('/js', express.static(path.join(ROOT, 'js')));
 
 // Главная страница — внедряем Telegram виджет с отложенной загрузкой
 app.get('/', (req, res) => {
     console.log('[INDEX] GET / запрошен');
-    try {
-        let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-        const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-        console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
-        
-        const widgetHtml = botUsername
+    let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
+    console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
+
+    const widgetHtml = botUsername
             ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">` +
               `<div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>` +
               `<div id="telegram-widget-container"></div>` +
@@ -1208,7 +1208,7 @@ app.patch('/api/notifications/:id/read', [param('id').notEmpty().isInt(), valida
 // ============================================
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(ROOT, 'index.html'));
 });
 
 // ============================================

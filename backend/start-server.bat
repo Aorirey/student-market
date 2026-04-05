@@ -25,6 +25,9 @@ echo Для остановки нажмите Ctrl+C
 echo ====================================
 echo.
 
+set NODE_ENV=development
+set DB_MODE=sqlite
+
 "C:\Program Files\nodejs\node.exe" server.js
 
 pause
