@@ -12,7 +12,12 @@
     "audit:fix": "npm audit fix",
     "security:check": "npm audit && node -c server.js && node -c server-pg.js && echo ✓ All security checks passed"
   },
-  "keywords": ["marketplace", "education", "security", "owasp"],
+  "keywords": [
+    "marketplace",
+    "education",
+    "security",
+    "owasp"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -23,6 +28,7 @@
     "express-rate-limit": "^8.3.2",
     "express-validator": "^7.3.2",
     "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.11.3",
     "sql.js": "^1.14.1",
     "uuid": "^13.0.0"

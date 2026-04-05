@@ -546,12 +546,21 @@ async function renderProducts(category, filterDiscipline) {
             const priceEl = document.createElement('span');
             priceEl.className = 'price';
             priceEl.textContent = `${item.price} ₽`;
-            
+
             const buyBtn = document.createElement('button');
             buyBtn.className = 'buy-btn';
-            buyBtn.textContent = 'Купить';
-            buyBtn.onclick = () => buyProduct(item.id);
             
+            // Проверяем, является ли текущий пользователь продавцом
+            if (currentUser && item.sellerId === currentUser.id) {
+                buyBtn.textContent = 'Ваш товар';
+                buyBtn.disabled = true;
+                buyBtn.style.cursor = 'default';
+                buyBtn.style.opacity = '0.6';
+            } else {
+                buyBtn.textContent = 'Купить';
+                buyBtn.onclick = () => buyProduct(item.id);
+            }
+
             const footer = document.createElement('div');
             footer.className = 'card-footer';
             footer.appendChild(priceEl);
@@ -736,12 +745,21 @@ async function openSellerPage(sellerId, sellerName, event) {
                 const priceEl = document.createElement('span');
                 priceEl.className = 'price';
                 priceEl.textContent = `${item.price} ₽`;
-                
+
                 const buyBtn = document.createElement('button');
                 buyBtn.className = 'buy-btn';
-                buyBtn.textContent = 'Купить';
-                buyBtn.onclick = () => buyProduct(item.id);
                 
+                // Проверяем, является ли текущий пользователь продавцом
+                if (currentUser && item.sellerId === currentUser.id) {
+                    buyBtn.textContent = 'Ваш товар';
+                    buyBtn.disabled = true;
+                    buyBtn.style.cursor = 'default';
+                    buyBtn.style.opacity = '0.6';
+                } else {
+                    buyBtn.textContent = 'Купить';
+                    buyBtn.onclick = () => buyProduct(item.id);
+                }
+
                 const footer = document.createElement('div');
                 footer.className = 'card-footer';
                 footer.appendChild(priceEl);
@@ -1273,7 +1291,7 @@ async function loadSalesData() {
                     
                     const metaEl = document.createElement('span');
                     metaEl.className = 'meta';
-                    metaEl.textContent = `${sale.price} ₽ • ${formatMoscowDate(sale.date)} • Покупатель: ${sale.buyerId}`;
+                    metaEl.textContent = `${sale.price} ₽ • ${formatMoscowDate(sale.date)} • Покупатель: ${sale.buyerName || sale.buyerId}`;
                     
                     infoDiv.appendChild(titleEl);
                     infoDiv.appendChild(metaEl);
@@ -1779,13 +1797,25 @@ function closeUploadModal() {
 }
 
 // Написать покупателю из модального окна загрузки
-function contactSellerFromModal() {
+async function contactSellerFromModal() {
     const purchaseId = document.getElementById('upload-purchase-id').value;
     const sellerId = document.getElementById('upload-seller-id').value;
     const buyerId = document.getElementById('upload-buyer-id').value;
-    
+
+    // Получаем имя покупателя
+    let buyerName = 'Покупатель';
+    try {
+        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`);
+        const buyer = await buyerResponse.json();
+        if (buyer && buyer.name) {
+            buyerName = buyer.name;
+        }
+    } catch (error) {
+        console.error('Ошибка получения имени покупателя:', error);
+    }
+
     closeUploadModal();
-    openChat(purchaseId, buyerId, 'Заказ');
+    openChat(purchaseId, buyerName, 'Заказ');
 }
 
 // Написать продавцу из модального окна подтверждения
@@ -1948,8 +1978,8 @@ async function loadChatsList() {
 
         // Объединяем покупки и продажи
         const allChats = [
-            ...purchases.map(p => ({ ...p, type: 'buyer', counterpartName: 'Продавец' })),
-            ...sales.map(s => ({ ...s, type: 'seller', counterpartName: 'Покупатель' }))
+            ...purchases.map(p => ({ ...p, type: 'buyer', counterpartName: p.sellerName || 'Продавец' })),
+            ...sales.map(s => ({ ...s, type: 'seller', counterpartName: s.buyerName || 'Покупатель' }))
         ];
 
         if (allChats.length === 0) {
