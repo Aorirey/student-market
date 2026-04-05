@@ -203,6 +203,12 @@ if (dbMode === 'postgres') {
         try { db.run(`ALTER TABLE users ADD COLUMN telegram_id BIGINT UNIQUE`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN login TEXT UNIQUE`); } catch(e) {}
+
+        // Миграции для purchases (для существующих БД)
+        try { db.run(`ALTER TABLE purchases ADD COLUMN sellerId TEXT`); } catch(e) {}
+        try { db.run(`ALTER TABLE purchases ADD COLUMN deadline TEXT`); } catch(e) {}
+        try { db.run(`ALTER TABLE purchases ADD COLUMN fileAttached INTEGER DEFAULT 0`); } catch(e) {}
+
         db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0)`);
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -849,7 +855,9 @@ if (dbMode === 'postgres') {
 
     app.get('/api/users/:id/sales', userIdValidator, (req, res) => {
         try {
+            console.log(`[SALES] Запрос продаж для sellerId: ${req.params.id}`);
             const result = db.exec("SELECT * FROM purchases WHERE sellerId = ?", [req.params.id]);
+            console.log(`[SALES] Найдено записей: ${result.length > 0 ? result[0].values.length : 0}`);
             res.json(result.length > 0 ? result[0].values.map(row => ({ 
                 id: row[0], 
                 productId: row[1], 
