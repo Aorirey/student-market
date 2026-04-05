@@ -184,7 +184,7 @@ if (dbMode === 'postgres') {
 
     async function initDatabase() {
         const SQL = await initSqlJs({
-            locateFile: file => path.join(__dirname, 'node_modules', 'sql.js', 'dist', file)
+            locateFile: file => path.join(ROOT, 'node_modules', 'sql.js', 'dist', file)
         });
 
         const dbPath = path.join(ROOT, 'database.sqlite');
