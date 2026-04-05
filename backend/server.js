@@ -53,22 +53,25 @@ app.use(helmet({
 // БЕЗОПАСНОСТЬ: Rate limiting (A04, A07)
 // ============================================
 const generalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 минут
-    max: 100, // 100 запросов
-    message: { error: 'Слишком много запросов, попробуйте позже' }
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { error: 'Слишком много запросов, попробуйте позже' },
+    skip: () => process.env.NODE_ENV === 'development'
 });
 
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 минут
-    max: 5, // 5 попыток входа
+    windowMs: 15 * 60 * 1000,
+    max: 5,
     message: { error: 'Слишком много попыток входа, попробуйте через 15 минут' },
-    skipSuccessfulRequests: false
+    skipSuccessfulRequests: false,
+    skip: () => process.env.NODE_ENV === 'development'
 });
 
 const strictLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 час
-    max: 10, // 10 запросов
-    message: { error: 'Слишком много запросов' }
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    message: { error: 'Слишком много запросов' },
+    skip: () => process.env.NODE_ENV === 'development'
 });
 
 app.use('/api/', generalLimiter);
