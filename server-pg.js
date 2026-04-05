@@ -1088,7 +1088,7 @@ app.delete('/api/custom-requests/:id', [param('id').notEmpty().isInt(), validate
 // API: Чат
 // ============================================
 
-app.get('/api/chat/:purchaseId', [param('purchaseId').notEmpty().isInt(), validate], async (req, res) => {
+app.get('/api/chat/:purchaseId', [param('purchaseId').notEmpty(), validate], async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM chat_messages WHERE purchase_id = $1 ORDER BY created_at ASC", [req.params.purchaseId]);
         res.json(result.rows.map(row => ({ 
@@ -1104,7 +1104,7 @@ app.get('/api/chat/:purchaseId', [param('purchaseId').notEmpty().isInt(), valida
 });
 
 app.post('/api/chat', [
-    body('purchaseId').notEmpty().isInt(),
+    body('purchaseId').notEmpty(),
     body('senderId').trim().notEmpty(),
     body('receiverId').trim().notEmpty(),
     body('message').optional().isLength({ max: 2000 }),
