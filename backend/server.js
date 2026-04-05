@@ -171,11 +171,12 @@ if (dbMode === 'postgres') {
         }
 
         // Создание таблиц
-        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, photo_url TEXT, login TEXT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, photo_url TEXT, login TEXT UNIQUE, vk_id BIGINT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         // Миграция для существующих БД
         try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN login TEXT UNIQUE`); } catch(e) {}
+        try { db.run(`ALTER TABLE users ADD COLUMN vk_id BIGINT UNIQUE`); } catch(e) {}
 
         // Миграции для purchases (для существующих БД)
         try { db.run(`ALTER TABLE purchases ADD COLUMN sellerId TEXT`); } catch(e) {}
@@ -589,6 +590,101 @@ if (dbMode === 'postgres') {
             res.json({ message: 'Пользователь удалён' });
         } catch (error) {
             console.error('Ошибка удаления:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // ============================================
+    // АВТОРИЗАЦИЯ: ВКонтакте
+    // ============================================
+
+    app.get('/api/config/vk', (req, res) => {
+        res.json({
+            clientId: process.env.VK_CLIENT_ID || null,
+            redirectUri: process.env.VK_REDIRECT_URI || null
+        });
+    });
+
+    app.post('/api/auth/vk', async (req, res) => {
+        try {
+            const { code } = req.body;
+            if (!code) {
+                return res.status(400).json({ error: 'Код авторизации не передан' });
+            }
+
+            const clientId = process.env.VK_CLIENT_ID;
+            const clientSecret = process.env.VK_CLIENT_SECRET;
+            const redirectUri = process.env.VK_REDIRECT_URI;
+
+            if (!clientId || !clientSecret) {
+                return res.status(500).json({ error: 'VK авторизация не настроена' });
+            }
+
+            const tokenResponse = await fetch('https://oauth.vk.com/access_token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    redirect_uri: redirectUri,
+                    code: code
+                })
+            });
+
+            const tokenData = await tokenResponse.json();
+            if (!tokenData.access_token) {
+                return res.status(401).json({ error: 'Ошибка авторизации VK' });
+            }
+
+            const { access_token, user_id } = tokenData;
+
+            const userResponse = await fetch('https://api.vk.com/method/users.get', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    access_token: access_token,
+                    v: '5.131',
+                    fields: 'photo_100,photo_200'
+                })
+            });
+
+            const userData = await userResponse.json();
+            if (!userData.response || userData.response.length === 0) {
+                return res.status(401).json({ error: 'Не удалось получить данные пользователя VK' });
+            }
+
+            const vkUser = userData.response[0];
+            const fullName = `${vkUser.first_name || ''} ${vkUser.last_name || ''}`.trim() || `user_${user_id}`;
+            const photoUrl = vkUser.photo_200 || vkUser.photo_100 || null;
+
+            let result = db.exec("SELECT * FROM users WHERE vk_id = ?", [user_id]);
+
+            if (result.length === 0 || result[0].values.length === 0) {
+                const hashedPassword = await bcrypt.hash(uuidv4(), 10);
+                const newId = uuidv4();
+                const login = `vk_${user_id}`;
+                db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, photo_url, login, vk_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [newId, sanitizeHTML(fullName), `${user_id}@vk.user`, hashedPassword, 10000, 0, 0, photoUrl, login, user_id]);
+                saveDatabase();
+                result = db.exec("SELECT * FROM users WHERE id = ?", [newId]);
+                console.log(`[VK] Создан: ${fullName}`);
+            } else {
+                console.log(`[VK] Вход: ${fullName}`);
+            }
+
+            const row = result[0].values[0];
+            res.json({
+                id: sanitizeHTML(row[0]),
+                name: sanitizeHTML(row[1]),
+                email: sanitizeHTML(row[2]),
+                balance: row[4],
+                isAdmin: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                photoUrl: row[8] || photoUrl,
+                login: row[9] || `vk_${user_id}`
+            });
+        } catch (error) {
+            console.error('[VK] Ошибка:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });

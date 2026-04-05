@@ -180,12 +180,14 @@ async function initDatabase() {
             review_count INTEGER DEFAULT 0,
             photo_url TEXT,
             login TEXT UNIQUE,
+            vk_id BIGINT UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
         // Миграция: добавляем колонки если их нет (для существующих БД)
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT UNIQUE`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vk_id BIGINT UNIQUE`);
 
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
@@ -524,6 +526,127 @@ app.delete('/api/users/:id', userIdValidator, async (req, res) => {
     } catch (error) {
         console.error('Ошибка удаления:', error.message);
         res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ============================================
+// АВТОРИЗАЦИЯ: ВКонтакте
+// ============================================
+
+// Конфиг VK для фронтенда
+app.get('/api/config/vk', (req, res) => {
+    res.json({
+        clientId: process.env.VK_CLIENT_ID || null,
+        redirectUri: process.env.VK_REDIRECT_URI || null
+    });
+});
+
+// OAuth callback — обмен code на token
+app.post('/api/auth/vk', async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) {
+            return res.status(400).json({ error: 'Код авторизации не передан' });
+        }
+
+        const clientId = process.env.VK_CLIENT_ID;
+        const clientSecret = process.env.VK_CLIENT_SECRET;
+        const redirectUri = process.env.VK_REDIRECT_URI;
+
+        if (!clientId || !clientSecret) {
+            return res.status(500).json({ error: 'VK авторизация не настроена' });
+        }
+
+        // Обмениваем code на access_token
+        const tokenResponse = await fetch('https://oauth.vk.com/access_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                redirect_uri: redirectUri,
+                code: code
+            })
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenData.access_token) {
+            console.error('[VK] Ошибка получения токена:', tokenData);
+            return res.status(401).json({ error: 'Ошибка авторизации VK' });
+        }
+
+        const { access_token, user_id, email: vkEmail } = tokenData;
+
+        // Получаем данные пользователя
+        const userResponse = await fetch('https://api.vk.com/method/users.get', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                access_token: access_token,
+                v: '5.131',
+                fields: 'photo_100,photo_200,city,country'
+            })
+        });
+
+        const userData = await userResponse.json();
+
+        if (!userData.response || userData.response.length === 0) {
+            return res.status(401).json({ error: 'Не удалось получить данные пользователя VK' });
+        }
+
+        const vkUser = userData.response[0];
+        const firstName = vkUser.first_name || '';
+        const lastName = vkUser.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim() || `user_${user_id}`;
+        const photoUrl = vkUser.photo_200 || vkUser.photo_100 || null;
+        const vkId = user_id;
+
+        // Ищем или создаём пользователя
+        let result = await pool.query("SELECT * FROM users WHERE vk_id = $1", [vkId]);
+
+        if (result.rows.length === 0) {
+            // Новый пользователь
+            const hashedPassword = await bcrypt.hash(uuidv4(), 10);
+            const newId = uuidv4();
+            const login = `vk_${vkId}`;
+
+            result = await pool.query(
+                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, photo_url, login, vk_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 RETURNING id, name, email, balance, is_admin, is_blocked, photo_url, login`,
+                [newId, sanitizeHTML(fullName), `${vkId}@vk.user`, hashedPassword, 10000, false, false, photoUrl, login, vkId]
+            );
+            console.log(`[VK] Создан новый пользователь: ${fullName}`);
+        } else {
+            // Обновляем имя и фото
+            await pool.query(
+                "UPDATE users SET name = $1, photo_url = $2 WHERE vk_id = $3",
+                [sanitizeHTML(fullName), photoUrl, vkId]
+            );
+            console.log(`[VK] Вход существующего пользователя: ${fullName}`);
+        }
+
+        const user = result.rows[0];
+
+        if (user.is_blocked) {
+            return res.status(403).json({ error: 'Аккаунт заблокирован' });
+        }
+
+        console.log(`[VK] Успешный вход: ${fullName}`);
+        res.json({
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            balance: user.balance,
+            isAdmin: user.is_admin,
+            isBlocked: user.is_blocked,
+            photoUrl: user.photo_url,
+            login: user.login
+        });
+    } catch (error) {
+        console.error('[VK] Ошибка:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
     }
 });
 
@@ -1054,6 +1177,25 @@ app.patch('/api/notifications/:id/read', [param('id').notEmpty().isInt(), valida
         console.error('Ошибка уведомления:', error.message);
         res.status(500).json({ error: 'Ошибка сервера' }); 
     }
+});
+
+// ============================================
+// VK Callback страница
+// ============================================
+
+app.get('/auth/vk/callback', (req, res) => {
+    // Эта страница получает code из URL и отправляет его в opener
+    res.send(`<!DOCTYPE html><html><head><title>VK Auth</title></head><body>
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code && window.opener) {
+        window.opener.postMessage({ type: 'vk_auth_code', code }, window.location.origin);
+        window.close();
+    } else {
+        document.body.innerHTML = '<p>Авторизация завершена. Закройте это окно.</p>';
+    }
+</script></body></html>`);
 });
 
 // ============================================

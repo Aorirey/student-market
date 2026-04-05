@@ -73,6 +73,28 @@ function updateThemeIcon(theme) {
     }
 }
 
+// Форматирование даты в московском времени
+function formatMoscowTime(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        hour12: false,
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Форматирование короткой даты в московском времени
+function formatMoscowDate(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('ru-RU', {
+        timeZone: 'Europe/Moscow'
+    });
+}
+
 // Проверка авторизации
 async function checkAuth() {
     const authButtons = document.getElementById('auth-buttons');
@@ -213,6 +235,58 @@ async function login() {
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error('[LOGIN] Ошибка:', error);
+    }
+}
+
+// Авторизация через ВКонтакте
+async function loginWithVK() {
+    try {
+        // Получаем конфиг VK
+        const configRes = await fetch(`${API_URL}/config/vk`);
+        const config = await configRes.json();
+
+        if (!config.clientId) {
+            showToast('Ошибка', 'VK авторизация не настроена', 'error');
+            return;
+        }
+
+        const redirectUri = config.redirectUri || `${window.location.origin}/auth/vk/callback`;
+        const authUrl = `https://oauth.vk.com/authorize?client_id=${config.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=email`;
+
+        // Открываем VK OAuth в новом окне
+        const authWindow = window.open(authUrl, 'vk_auth', 'width=600,height=500');
+
+        // Слушаем сообщение от окна
+        const handler = async (event) => {
+            if (event.data && event.data.type === 'vk_auth_code') {
+                window.removeEventListener('message', handler);
+                authWindow.close();
+
+                const code = event.data.code;
+                const response = await fetch(`${API_URL}/auth/vk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    showToast('Ошибка', data.error || 'Ошибка входа через VK', 'error');
+                    return;
+                }
+
+                currentUser = data;
+                sessionStorage.setItem('currentUser', JSON.stringify(data));
+                closeModal();
+                checkAuth();
+                showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
+            }
+        };
+
+        window.addEventListener('message', handler);
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка подключения к VK', 'error');
+        console.error('[VK] Ошибка:', error);
     }
 }
 
@@ -707,7 +781,7 @@ async function openSellerPage(sellerId, sellerName, event) {
                 
                 const date = document.createElement('span');
                 date.className = 'review-date';
-                date.textContent = new Date(review.createdAt).toLocaleDateString();
+                date.textContent = formatMoscowDate(review.createdAt);
                 
                 header.appendChild(stars);
                 header.appendChild(date);
@@ -1107,7 +1181,7 @@ async function loadCabinetData() {
                 
                 const metaEl = document.createElement('span');
                 metaEl.className = 'meta';
-                metaEl.textContent = `${purchase.price} ₽ • ${new Date(purchase.date).toLocaleDateString()}`;
+                metaEl.textContent = `${purchase.price} ₽ • ${formatMoscowDate(purchase.date)}`;
                 
                 infoDiv.appendChild(titleEl);
                 infoDiv.appendChild(metaEl);
@@ -1199,7 +1273,7 @@ async function loadSalesData() {
                     
                     const metaEl = document.createElement('span');
                     metaEl.className = 'meta';
-                    metaEl.textContent = `${sale.price} ₽ • ${new Date(sale.date).toLocaleDateString()} • Покупатель: ${sale.buyerId}`;
+                    metaEl.textContent = `${sale.price} ₽ • ${formatMoscowDate(sale.date)} • Покупатель: ${sale.buyerId}`;
                     
                     infoDiv.appendChild(titleEl);
                     infoDiv.appendChild(metaEl);
@@ -1958,7 +2032,7 @@ async function loadChatMessages() {
             if (msg.createdAt) {
                 const metaDiv = document.createElement('div');
                 metaDiv.className = 'chat-message-meta';
-                metaDiv.textContent = new Date(msg.createdAt).toLocaleString();
+                metaDiv.textContent = formatMoscowTime(msg.createdAt);
                 messageDiv.appendChild(metaDiv);
             }
 
@@ -2177,7 +2251,7 @@ async function loadNotifications() {
 
             const timeEl = document.createElement('div');
             timeEl.className = 'notification-time';
-            timeEl.textContent = new Date(notification.createdAt).toLocaleString();
+            timeEl.textContent = formatMoscowTime(notification.createdAt);
 
             item.appendChild(titleEl);
             item.appendChild(messageEl);
@@ -2287,6 +2361,9 @@ function setupEventListeners() {
                 break;
             case 'register':
                 openModal('register');
+                break;
+            case 'vk-login':
+                loginWithVK();
                 break;
             case 'close-upload-modal':
                 closeUploadModal();
@@ -2426,6 +2503,17 @@ function setupEventListeners() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('StudentMarket загружен');
+
+    // Проверяем VK OAuth callback
+    if (window.location.pathname === '/auth/vk/callback') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        if (code) {
+            window.opener.postMessage({ type: 'vk_auth_code', code }, window.location.origin);
+            window.close();
+            return;
+        }
+    }
 
     // Инициализация темы
     initTheme();
