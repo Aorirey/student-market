@@ -34,10 +34,10 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://unpkg.com"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
             imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-            connectSrc: ["'self'", '*', 'blob:', 'data:'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://oauth.vk.com', 'https://api.vk.com'],
             fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
@@ -541,10 +541,10 @@ app.get('/api/config/vk', (req, res) => {
     });
 });
 
-// OAuth callback — обмен code на token
+// OAuth callback — обмен code на token (VK ID SDK)
 app.post('/api/auth/vk', async (req, res) => {
     try {
-        const { code } = req.body;
+        const { code, device_id } = req.body;
         if (!code) {
             return res.status(400).json({ error: 'Код авторизации не передан' });
         }
@@ -557,34 +557,40 @@ app.post('/api/auth/vk', async (req, res) => {
             return res.status(500).json({ error: 'VK авторизация не настроена' });
         }
 
-        // Обмениваем code на access_token
-        const tokenResponse = await fetch('https://oauth.vk.com/access_token', {
+        // Обмениваем code на access_token через VK ID
+        const tokenParams = {
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            code: code
+        };
+        if (device_id) {
+            tokenParams.device_id = device_id;
+        }
+
+        const tokenResponse = await fetch('https://id.vk.com/oauth2/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                client_id: clientId,
-                client_secret: clientSecret,
-                redirect_uri: redirectUri,
-                code: code
-            })
+            body: new URLSearchParams(tokenParams)
         });
 
         const tokenData = await tokenResponse.json();
 
-        if (!tokenData.access_token) {
+        if (!tokenData.access_token && !tokenData.token) {
             console.error('[VK] Ошибка получения токена:', tokenData);
-            return res.status(401).json({ error: 'Ошибка авторизации VK' });
+            return res.status(401).json({ error: tokenData.error || 'Ошибка авторизации VK' });
         }
 
-        const { access_token, user_id, email: vkEmail } = tokenData;
+        const accessToken = tokenData.access_token || tokenData.token;
+        const userId = tokenData.user_id || tokenData.sub;
 
-        // Получаем данные пользователя
+        // Получаем данные пользователя через VK API
         const userResponse = await fetch('https://api.vk.com/method/users.get', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
-                access_token: access_token,
-                v: '5.131',
+                access_token: accessToken,
+                v: '5.199',
                 fields: 'photo_100,photo_200,city,country'
             })
         });
@@ -598,9 +604,9 @@ app.post('/api/auth/vk', async (req, res) => {
         const vkUser = userData.response[0];
         const firstName = vkUser.first_name || '';
         const lastName = vkUser.last_name || '';
-        const fullName = `${firstName} ${lastName}`.trim() || `user_${user_id}`;
+        const fullName = `${firstName} ${lastName}`.trim() || `user_${userId}`;
         const photoUrl = vkUser.photo_200 || vkUser.photo_100 || null;
-        const vkId = user_id;
+        const vkId = userId;
 
         // Ищем или создаём пользователя
         let result = await pool.query("SELECT * FROM users WHERE vk_id = $1", [vkId]);
