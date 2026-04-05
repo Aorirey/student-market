@@ -2689,12 +2689,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const login = document.getElementById('login-login').value;
             const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error-message');
+
+            // Скрыть предыдущую ошибку
+            errorEl.style.display = 'none';
+            errorEl.textContent = '';
 
             if (!login || !password) {
-                showToast('Ошибка', 'Заполните все поля!', 'error');
+                errorEl.textContent = 'Заполните все поля!';
+                errorEl.style.display = 'block';
                 return;
             }
 
@@ -2708,7 +2714,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const data = await response.json();
 
                 if (!response.ok) {
-                    showToast('Ошибка', data.error || 'Неверный логин или пароль', 'error');
+                    errorEl.textContent = data.error || 'Неверный логин/email или пароль';
+                    errorEl.style.display = 'block';
                     return;
                 }
 
@@ -2718,12 +2725,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // Очистка формы
                 loginForm.reset();
+                errorEl.style.display = 'none';
 
                 closeModal();
                 checkAuth();
                 showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
             } catch (error) {
-                showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+                errorEl.textContent = 'Ошибка подключения к серверу. Проверьте соединение.';
+                errorEl.style.display = 'block';
                 console.error('[LOGIN] Ошибка:', error);
             }
         });

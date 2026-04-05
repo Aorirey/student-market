@@ -197,11 +197,12 @@ if (dbMode === 'postgres') {
         }
 
         // Создание таблиц
-        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, telegram_id BIGINT UNIQUE, photo_url TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, telegram_id BIGINT UNIQUE, photo_url TEXT, login TEXT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         // Миграция для существующих БД
         try { db.run(`ALTER TABLE users ADD COLUMN telegram_id BIGINT UNIQUE`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
+        try { db.run(`ALTER TABLE users ADD COLUMN login TEXT UNIQUE`); } catch(e) {}
         db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0)`);
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -214,8 +215,8 @@ if (dbMode === 'postgres') {
         const adminExists = db.exec("SELECT * FROM users WHERE email = 'admin@studentmarket.ru'");
         if (adminExists.length === 0 || adminExists[0].values.length === 0) {
             const hashedPassword = bcrypt.hashSync('admin123', 10);
-            db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
-                ['admin', 'Администратор', 'admin@studentmarket.ru', hashedPassword, 10000, 1, 0]);
+            db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, login) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                ['admin', 'Администратор', 'admin@studentmarket.ru', hashedPassword, 10000, 1, 0, 'admin']);
             saveDatabase();
             console.log('Администратор создан');
         }
@@ -354,42 +355,146 @@ if (dbMode === 'postgres') {
     app.post('/api/users/register', registerValidator, async (req, res) => {
         try {
             const { name, email, password } = req.body;
-            
+
             // Проверка существующего пользователя (параметризованный запрос)
             const existing = db.exec("SELECT * FROM users WHERE email = ?", [email]);
             if (existing.length > 0 && existing[0].values.length > 0) {
                 return res.status(409).json({ error: 'Пользователь уже существует' });
             }
-            
+
             // Хеширование пароля (A02)
             const hashedPassword = await bcrypt.hash(password, 10);
             const id = uuidv4();
-            
-            db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+
+            db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [id, sanitizeHTML(name), email.toLowerCase(), hashedPassword, 10000, 0, 0]);
             saveDatabase();
-            
+
             // Логирование (A09)
             console.log(`[AUTH] Зарегистрирован новый пользователь: ${email}`);
-            
-            res.status(201).json({ 
-                id, 
-                name: sanitizeHTML(name), 
-                email: email.toLowerCase(), 
-                balance: 10000, 
-                isAdmin: false, 
-                isBlocked: false 
+
+            res.status(201).json({
+                id,
+                name: sanitizeHTML(name),
+                email: email.toLowerCase(),
+                balance: 10000,
+                isAdmin: false,
+                isBlocked: false
             });
-        } catch (error) { 
+        } catch (error) {
             console.error('Ошибка регистрации:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // Регистрация через форму (name, login, password)
+    app.post('/api/auth/register', async (req, res) => {
+        try {
+            const { name, login, password } = req.body;
+
+            if (!name || !login || !password) {
+                return res.status(400).json({ error: 'Заполните все поля!' });
+            }
+
+            // Проверка логина
+            const loginRegex = /^[a-zA-Z0-9_]{3,20}$/;
+            if (!loginRegex.test(login)) {
+                return res.status(400).json({ error: 'Логин: только латинские буквы, цифры и _ (3-20 символов)' });
+            }
+
+            // Проверка пароля
+            if (password.length < 6) {
+                return res.status(400).json({ error: 'Пароль должен быть не менее 6 символов' });
+            }
+
+            // Проверка существующего пользователя
+            const existing = db.exec("SELECT * FROM users WHERE login = ? OR email = ?", [login.toLowerCase(), login.toLowerCase()]);
+            if (existing.length > 0 && existing[0].values.length > 0) {
+                return res.status(409).json({ error: 'Пользователь с таким логином уже существует' });
+            }
+
+            // Хеширование пароля
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const id = uuidv4();
+
+            db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, login) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [id, sanitizeHTML(name), `${login.toLowerCase()}@studentmarket.ru`, hashedPassword, 10000, 0, 0, login.toLowerCase()]);
+            saveDatabase();
+
+            console.log(`[AUTH] Зарегистрирован новый пользователь: ${login}`);
+
+            res.status(201).json({
+                id,
+                name: sanitizeHTML(name),
+                email: `${login.toLowerCase()}@studentmarket.ru`,
+                balance: 10000,
+                isAdmin: false,
+                isBlocked: false,
+                login: login.toLowerCase()
+            });
+        } catch (error) {
+            console.error('Ошибка регистрации:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // Вход по логину ИЛИ email (используется формой входа)
+    app.post('/api/auth/login', async (req, res) => {
+        try {
+            const { login, password } = req.body;
+
+            if (!login || !password) {
+                return res.status(400).json({ error: 'Заполните все поля!' });
+            }
+
+            // Поиск пользователя по login ИЛИ email
+            const result = db.exec(
+                "SELECT id, name, email, password, balance, isAdmin, isBlocked, login FROM users WHERE login = ? OR email = ?",
+                [login.toLowerCase(), login.toLowerCase()]
+            );
+
+            if (result.length === 0 || result[0].values.length === 0) {
+                console.log(`[AUTH] Неудачная попытка входа: ${login} (пользователь не найден)`);
+                return res.status(401).json({ error: 'Неверный логин/email или пароль' });
+            }
+
+            const row = result[0].values[0];
+            const hashedPassword = row[3];
+
+            // Проверка пароля
+            const isValidPassword = await bcrypt.compare(password, hashedPassword);
+            if (!isValidPassword) {
+                console.log(`[AUTH] Неудачная попытка входа: ${login} (неверный пароль)`);
+                return res.status(401).json({ error: 'Неверный логин/email или пароль' });
+            }
+
+            const user = {
+                id: sanitizeHTML(row[0]),
+                name: sanitizeHTML(row[1]),
+                email: sanitizeHTML(row[2]),
+                balance: row[4],
+                isAdmin: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                login: sanitizeHTML(row[7]) || ''
+            };
+
+            if (user.isBlocked) {
+                console.log(`[AUTH] Попытка входа заблокированного пользователя: ${login}`);
+                return res.status(403).json({ error: 'Аккаунт заблокирован' });
+            }
+
+            console.log(`[AUTH] Успешный вход: ${login}`);
+            res.json(user);
+        } catch (error) {
+            console.error('Ошибка входа:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
 
     app.post('/api/users/login', loginValidator, async (req, res) => {
         try {
             const { email, password } = req.body;
-            
+
             // Поиск пользователя (параметризованный запрос - A03)
             const result = db.exec("SELECT id, name, email, password, balance, isAdmin, isBlocked FROM users WHERE email = ?", [email.toLowerCase()]);
             
