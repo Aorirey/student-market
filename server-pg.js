@@ -230,6 +230,11 @@ async function initDatabase() {
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
 
+        // Миграции для purchases (для существующих БД)
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS file_attached BOOLEAN DEFAULT false`);
+
         await pool.query(`CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY, 
             title TEXT NOT NULL, 
@@ -904,7 +909,9 @@ app.get('/api/users/:id/purchases', userIdValidator, async (req, res) => {
 
 app.get('/api/users/:id/sales', userIdValidator, async (req, res) => {
     try {
+        console.log(`[SALES] Запрос продаж для seller_id: ${req.params.id}`);
         const result = await pool.query("SELECT * FROM purchases WHERE seller_id = $1", [req.params.id]);
+        console.log(`[SALES] Найдено записей: ${result.rows.length}`);
         res.json(result.rows.map(row => ({ 
             id: row.id, productId: row.product_id, title: sanitizeHTML(row.title), price: row.price, 
             buyerId: sanitizeHTML(row.buyer_id), sellerId: sanitizeHTML(row.seller_id), 

@@ -1179,9 +1179,11 @@ async function loadSalesData() {
     if (!currentUser) return;
 
     try {
+        console.log('[SALES] Загрузка продаж для пользователя:', currentUser.id);
         // Загружаем продажи (для продавца)
         const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
         const sales = await salesResponse.json();
+        console.log('[SALES] Получено продаж:', sales.length, sales);
 
         const sellerSalesList = document.getElementById('seller-sales-list');
         if (sellerSalesList) {
