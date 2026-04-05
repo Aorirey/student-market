@@ -99,18 +99,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ============================================
 // СТАТИКА: Раздача CSS, JS, изображений
 // ============================================
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
+const ROOT = path.join(__dirname, '..');
+app.use('/css', express.static(path.join(ROOT, 'css')));
+app.use('/js', express.static(path.join(ROOT, 'js')));
 
 // Главная страница — внедряем Telegram виджет с отложенной загрузкой
 app.get('/', (req, res) => {
     console.log('[INDEX] GET / запрошен');
-    try {
-        let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-        const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-        console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
-        
-        const widgetHtml = botUsername
+    let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
+    console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
+
+    const widgetHtml = botUsername
             ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">` +
               `<div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>` +
               `<div id="telegram-widget-container"></div>` +
@@ -229,6 +229,11 @@ async function initDatabase() {
 
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+
+        // Миграции для purchases (для существующих БД)
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS seller_id TEXT`);
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+        await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS file_attached BOOLEAN DEFAULT false`);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY, 
@@ -904,7 +909,9 @@ app.get('/api/users/:id/purchases', userIdValidator, async (req, res) => {
 
 app.get('/api/users/:id/sales', userIdValidator, async (req, res) => {
     try {
+        console.log(`[SALES] Запрос продаж для seller_id: ${req.params.id}`);
         const result = await pool.query("SELECT * FROM purchases WHERE seller_id = $1", [req.params.id]);
+        console.log(`[SALES] Найдено записей: ${result.rows.length}`);
         res.json(result.rows.map(row => ({ 
             id: row.id, productId: row.product_id, title: sanitizeHTML(row.title), price: row.price, 
             buyerId: sanitizeHTML(row.buyer_id), sellerId: sanitizeHTML(row.seller_id), 
@@ -1201,7 +1208,7 @@ app.patch('/api/notifications/:id/read', [param('id').notEmpty().isInt(), valida
 // ============================================
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(ROOT, 'index.html'));
 });
 
 // ============================================
