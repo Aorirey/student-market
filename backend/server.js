@@ -11,6 +11,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
 const { authenticateToken, requireAdmin, requirePurchaseParticipant } = require('./auth');
+const telegram = require('./telegram');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -151,11 +152,16 @@ function sanitizeHTML(str) {
     return String(str).replace(/[&<>"'/]/g, char => map[char]);
 }
 
-// Helper: автоматическое создание уведомлений
+// Helper: автоматическое создание уведомлений + Telegram
 function createNotification(userId, title, message, type) {
     try {
         db.run("INSERT INTO notifications (userId, title, message, type) VALUES (?, ?, ?, ?)",
             [userId, title, message, type]);
+
+        // Отправляем Telegram-уведомление
+        telegram.notifyUser(userId, title, message, db).catch(err => {
+            console.error('[TELEGRAM] Ошибка отправки уведомления:', err.message);
+        });
     } catch (error) {
         console.error('[NOTIFICATION] Ошибка создания уведомления:', error.message);
     }
@@ -227,6 +233,11 @@ if (dbMode === 'postgres') {
             saveDatabase();
             console.log('Администратор создан');
         }
+
+        // Инициализация таблицы Telegram
+        telegram.initTelegramTable(db);
+        telegram.loadChatIdCache(db);
+
         console.log('База данных инициализирована');
     }
 
@@ -2970,6 +2981,493 @@ if (dbMode === 'postgres') {
             res.json({ message: `Обновлено ${ids.length} товаров на статус "${status}"` });
         } catch (error) {
             console.error('Ошибка массового обновления:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // ============================================
+    // АНАЛИТИКА: Расширенные данные для графиков
+    // ============================================
+
+    // GET /api/analytics/sales — данные для графика продаж (по дням/неделям/месяцам)
+    app.get('/api/analytics/sales', authenticateToken, (req, res) => {
+        try {
+            const { period = 'days', limit = 30 } = req.query;
+            const limitNum = parseInt(limit);
+
+            let dateFormat, groupBy;
+            switch (period) {
+                case 'months':
+                    dateFormat = "strftime('%Y-%m', date)";
+                    break;
+                case 'weeks':
+                    dateFormat = "strftime('%Y-%W', date)";
+                    break;
+                default:
+                    dateFormat = "strftime('%Y-%m-%d', date)";
+            }
+
+            const salesData = db.exec(`
+                SELECT ${dateFormat} as period,
+                       COUNT(*) as count,
+                       SUM(price) as revenue,
+                       AVG(price) as avgPrice
+                FROM purchases
+                GROUP BY ${dateFormat}
+                ORDER BY period DESC
+                LIMIT ${limitNum}
+            `);
+
+            const result = salesData.length > 0 ? salesData[0].values.map(row => ({
+                period: row[0],
+                count: row[1],
+                revenue: row[2],
+                avgPrice: parseFloat(row[3]).toFixed(2)
+            })).reverse() : [];
+
+            res.json({ period, data: result });
+        } catch (error) {
+            console.error('Ошибка получения аналитики продаж:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // GET /api/analytics/activity — активность пользователей (регистрации, покупки, отзывы)
+    app.get('/api/analytics/activity', authenticateToken, (req, res) => {
+        try {
+            const { days = 30 } = req.query;
+            const daysNum = parseInt(days);
+
+            const registrations = db.exec(`
+                SELECT strftime('%Y-%m-%d', createdAt) as date, COUNT(*) as count
+                FROM users
+                WHERE createdAt >= datetime('now', '-${daysNum} days')
+                GROUP BY date
+                ORDER BY date
+            `);
+
+            const purchases = db.exec(`
+                SELECT strftime('%Y-%m-%d', date) as date, COUNT(*) as count
+                FROM purchases
+                WHERE date >= datetime('now', '-${daysNum} days')
+                GROUP BY date
+                ORDER BY date
+            `);
+
+            const reviews = db.exec(`
+                SELECT strftime('%Y-%m-%d', createdAt) as date, COUNT(*) as count
+                FROM reviews
+                WHERE createdAt >= datetime('now', '-${daysNum} days')
+                GROUP BY date
+                ORDER BY date
+            `);
+
+            res.json({
+                days: daysNum,
+                registrations: registrations.length > 0 ? registrations[0].values.map(r => ({ date: r[0], count: r[1] })) : [],
+                purchases: purchases.length > 0 ? purchases[0].values.map(r => ({ date: r[0], count: r[1] })) : [],
+                reviews: reviews.length > 0 ? reviews[0].values.map(r => ({ date: r[0], count: r[1] })) : []
+            });
+        } catch (error) {
+            console.error('Ошибка получения аналитики активности:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // GET /api/analytics/ratings — распределение рейтингов продавцов
+    app.get('/api/analytics/ratings', authenticateToken, (req, res) => {
+        try {
+            const topSellers = db.exec(`
+                SELECT u.name, u.rating, u.reviewCount, u.balance,
+                       (SELECT COUNT(*) FROM products p WHERE p.sellerId = u.id) as productCount,
+                       (SELECT COUNT(*) FROM purchases pu WHERE pu.sellerId = u.id) as salesCount
+                FROM users u
+                WHERE u.reviewCount > 0
+                ORDER BY u.rating DESC, u.reviewCount DESC
+                LIMIT 20
+            `);
+
+            const ratingDistribution = db.exec(`
+                SELECT
+                    SUM(CASE WHEN rating >= 4.5 THEN 1 ELSE 0 END) as excellent,
+                    SUM(CASE WHEN rating >= 3.5 AND rating < 4.5 THEN 1 ELSE 0 END) as good,
+                    SUM(CASE WHEN rating >= 2.5 AND rating < 3.5 THEN 1 ELSE 0 END) as average,
+                    SUM(CASE WHEN rating < 2.5 THEN 1 ELSE 0 END) as poor
+                FROM users
+                WHERE reviewCount > 0
+            `);
+
+            res.json({
+                topSellers: topSellers.length > 0 ? topSellers[0].values.map(row => ({
+                    name: row[0],
+                    rating: parseFloat(row[1]).toFixed(2),
+                    reviewCount: row[2],
+                    balance: row[3],
+                    productCount: row[4],
+                    salesCount: row[5]
+                })) : [],
+                distribution: ratingDistribution.length > 0 ? {
+                    excellent: ratingDistribution[0].values[0][0] || 0,
+                    good: ratingDistribution[0].values[0][1] || 0,
+                    average: ratingDistribution[0].values[0][2] || 0,
+                    poor: ratingDistribution[0].values[0][3] || 0
+                } : { excellent: 0, good: 0, average: 0, poor: 0 }
+            });
+        } catch (error) {
+            console.error('Ошибка получения рейтингов:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // GET /api/analytics/revenue — доходы по категориям
+    app.get('/api/analytics/revenue', authenticateToken, (req, res) => {
+        try {
+            const revenueByCategory = db.exec(`
+                SELECT pr.category,
+                       COUNT(*) as salesCount,
+                       SUM(pu.price) as totalRevenue,
+                       AVG(pu.price) as avgSale
+                FROM purchases pu
+                JOIN products pr ON pu.productId = pr.id
+                GROUP BY pr.category
+            `);
+
+            const revenueByProduct = db.exec(`
+                SELECT pr.title, pr.sellerName, pu.price, pu.date
+                FROM purchases pu
+                JOIN products pr ON pu.productId = pr.id
+                ORDER BY pu.date DESC
+                LIMIT 20
+            `);
+
+            res.json({
+                byCategory: revenueByCategory.length > 0 ? revenueByCategory[0].values.map(row => ({
+                    category: row[0],
+                    salesCount: row[1],
+                    totalRevenue: row[2],
+                    avgSale: parseFloat(row[3]).toFixed(2)
+                })) : [],
+                recentSales: revenueByProduct.length > 0 ? revenueByProduct[0].values.map(row => ({
+                    title: row[0],
+                    sellerName: row[1],
+                    price: row[2],
+                    date: row[3]
+                })) : []
+            });
+        } catch (error) {
+            console.error('Ошибка получения аналитики доходов:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // GET /api/analytics/user/:userId — персональная аналитика пользователя
+    app.get('/api/analytics/user/:userId', authenticateToken, (req, res) => {
+        try {
+            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Доступ запрещён' });
+            }
+
+            // Продажи (если пользователь — продавец)
+            const salesStats = db.exec(`
+                SELECT COUNT(*) as totalSales,
+                       COALESCE(SUM(price), 0) as totalRevenue,
+                       COALESCE(AVG(price), 0) as avgSale,
+                       COALESCE(MAX(price), 0) as maxSale,
+                       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as activeSales,
+                       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completedSales,
+                       SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelledSales
+                FROM purchases
+                WHERE sellerId = ?
+            `, [req.params.userId]);
+
+            // Покупки (если пользователь — покупатель)
+            const purchasesStats = db.exec(`
+                SELECT COUNT(*) as totalPurchases,
+                       COALESCE(SUM(price), 0) as totalSpent,
+                       COALESCE(AVG(price), 0) as avgPurchase
+                FROM purchases
+                WHERE buyerId = ?
+            `, [req.params.userId]);
+
+            // Товары пользователя
+            const productsStats = db.exec(`
+                SELECT COUNT(*) as totalProducts,
+                       SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                       SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM products
+                WHERE sellerId = ?
+            `, [req.params.userId]);
+
+            // Продажи по дням (последние 30)
+            const salesByDay = db.exec(`
+                SELECT strftime('%Y-%m-%d', date) as date,
+                       COUNT(*) as count,
+                       SUM(price) as revenue
+                FROM purchases
+                WHERE sellerId = ? AND date >= datetime('now', '-30 days')
+                GROUP BY date
+                ORDER BY date
+            `, [req.params.userId]);
+
+            // Отзывы о пользователе
+            const reviewsStats = db.exec(`
+                SELECT COUNT(*) as totalReviews,
+                       COALESCE(AVG(rating), 0) as avgRating,
+                       SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as fiveStars,
+                       SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as fourStars,
+                       SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as threeStars,
+                       SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as twoStars,
+                       SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as oneStar
+                FROM reviews
+                WHERE sellerId = ?
+            `, [req.params.userId]);
+
+            const formatStats = (result, fields) => {
+                if (!result.length || !result[0].values.length) return {};
+                const row = result[0].values[0];
+                const obj = {};
+                fields.forEach((field, i) => {
+                    obj[field] = typeof row[i] === 'number' ? row[i] : parseFloat(row[i] || 0).toFixed(2);
+                });
+                return obj;
+            };
+
+            res.json({
+                sales: formatStats(salesStats, ['totalSales', 'totalRevenue', 'avgSale', 'maxSale', 'activeSales', 'completedSales', 'cancelledSales']),
+                purchases: formatStats(purchasesStats, ['totalPurchases', 'totalSpent', 'avgPurchase']),
+                products: formatStats(productsStats, ['totalProducts', 'approved', 'pending', 'rejected']),
+                salesByDay: salesByDay.length > 0 ? salesByDay[0].values.map(r => ({
+                    date: r[0], count: r[1], revenue: r[2]
+                })) : [],
+                reviews: formatStats(reviewsStats, ['totalReviews', 'avgRating', 'fiveStars', 'fourStars', 'threeStars', 'twoStars', 'oneStar'])
+            });
+        } catch (error) {
+            console.error('Ошибка персональной аналитики:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // ============================================
+    // TELEGRAM БОТ: Подписка на уведомления
+    // ============================================
+
+    // POST /api/telegram/webhook — webhook от Telegram Bot API
+    app.post('/api/telegram/webhook', express.json(), (req, res) => {
+        try {
+            const update = req.body;
+
+            // Обрабатываем только сообщения
+            if (!update.message || !update.message.text) {
+                return res.json({ ok: true });
+            }
+
+            const chatId = update.message.chat.id;
+            const text = update.message.text.trim();
+            const firstName = update.message.from.first_name || 'Пользователь';
+
+            // Команда /start — регистрация
+            if (text === '/start' || text.startsWith('/start ')) {
+                // Извлекаем userId из /start userId
+                const parts = text.split(' ');
+                const userId = parts[1];
+
+                if (!userId) {
+                    telegram.sendTelegramMessage(chatId,
+                        `👋 Привет, ${firstName}!\n\n` +
+                        `Для подписки на уведомления отправьте команду:\n` +
+                        `/connect ВАШ_USER_ID\n\n` +
+                        `Ваш userId можно найти в настройках профиля.`
+                    );
+                    return res.json({ ok: true });
+                }
+
+                // Проверяем, что пользователь существует
+                const userResult = db.exec("SELECT name FROM users WHERE id = ?", [userId]);
+                if (!userResult.length || !userResult[0].values.length) {
+                    telegram.sendTelegramMessage(chatId,
+                        `❌ Пользователь с ID "${userId}" не найден. Проверьте правильность ID.`
+                    );
+                    return res.json({ ok: true });
+                }
+
+                const userName = userResult[0].values[0][0];
+
+                // Сохраняем подписку
+                try {
+                    db.run("INSERT OR REPLACE INTO telegram_subscriptions (userId, chatId, createdAt) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                        [userId, String(chatId)]);
+                    saveDatabase();
+                    telegram.chatIdCache.set(userId, String(chatId));
+                } catch (e) {
+                    // Если UNIQUE constraint не работает, используем UPDATE
+                    db.run("UPDATE telegram_subscriptions SET chatId = ? WHERE userId = ?", [String(chatId), userId]);
+                    saveDatabase();
+                    telegram.chatIdCache.set(userId, String(chatId));
+                }
+
+                telegram.sendTelegramMessage(chatId,
+                    `✅ ${userName}, вы подписаны на уведомления!\n\n` +
+                    `Вы будете получать уведомления о:\n` +
+                    `• 💰 Новых покупках ваших товаров\n` +
+                    `• ✅/❌ Результатах модерации\n` +
+                    `• 📝 Новых отзывах\n\n` +
+                    `Для отписки: /unsubscribe`
+                );
+
+                console.log(`[TELEGRAM] Пользователь ${userId} (${userName}) подписался: chatId=${chatId}`);
+                return res.json({ ok: true });
+            }
+
+            // Команда /connect userId
+            if (text.startsWith('/connect ')) {
+                const userId = text.split(' ')[1];
+                if (!userId) {
+                    return telegram.sendTelegramMessage(chatId, 'Использование: /connect ВАШ_USER_ID');
+                }
+
+                const userResult = db.exec("SELECT name FROM users WHERE id = ?", [userId]);
+                if (!userResult.length || !userResult[0].values.length) {
+                    return telegram.sendTelegramMessage(chatId, `❌ Пользователь "${userId}" не найден`);
+                }
+
+                const userName = userResult[0].values[0][0];
+                try {
+                    db.run("INSERT OR REPLACE INTO telegram_subscriptions (userId, chatId, createdAt) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                        [userId, String(chatId)]);
+                    saveDatabase();
+                    telegram.chatIdCache.set(userId, String(chatId));
+                } catch (e) {
+                    db.run("UPDATE telegram_subscriptions SET chatId = ? WHERE userId = ?", [String(chatId), userId]);
+                    saveDatabase();
+                    telegram.chatIdCache.set(userId, String(chatId));
+                }
+
+                telegram.sendTelegramMessage(chatId, `✅ ${userName}, подписка оформлена!`);
+                console.log(`[TELEGRAM] Подписка через /connect: userId=${userId}, chatId=${chatId}`);
+                return res.json({ ok: true });
+            }
+
+            // Команда /unsubscribe
+            if (text === '/unsubscribe') {
+                db.run("DELETE FROM telegram_subscriptions WHERE chatId = ?", [String(chatId)]);
+                saveDatabase();
+                // Удаляем из кэша
+                for (const [userId, cId] of telegram.chatIdCache.entries()) {
+                    if (cId === String(chatId)) {
+                        telegram.chatIdCache.delete(userId);
+                    }
+                }
+
+                telegram.sendTelegramMessage(chatId,
+                    `👋 Вы отписались от уведомлений.\nДля подписки снова: /connect ВАШ_USER_ID`
+                );
+                console.log(`[TELEGRAM] Отписка: chatId=${chatId}`);
+                return res.json({ ok: true });
+            }
+
+            // Команда /help
+            if (text === '/help') {
+                telegram.sendTelegramMessage(chatId,
+                    `📋 Доступные команды:\n\n` +
+                    `/connect USER_ID — подписаться на уведомления\n` +
+                    `/unsubscribe — отписаться\n` +
+                    `/status — проверить статус подписки\n` +
+                    `/help — эта справка`
+                );
+                return res.json({ ok: true });
+            }
+
+            // Команда /status
+            if (text === '/status') {
+                const subResult = db.exec("SELECT userId FROM telegram_subscriptions WHERE chatId = ?", [String(chatId)]);
+                if (subResult.length > 0 && subResult[0].values.length > 0) {
+                    const userId = subResult[0].values[0][0];
+                    telegram.sendTelegramMessage(chatId, `✅ Вы подписаны на уведомления (userId: ${userId})`);
+                } else {
+                    telegram.sendTelegramMessage(chatId, `❌ Вы не подписаны. Используйте /connect USER_ID`);
+                }
+                return res.json({ ok: true });
+            }
+
+            // Неизвестная команда
+            telegram.sendTelegramMessage(chatId,
+                `❓ Неизвестная команда. Используйте /help для списка команд.`
+            );
+            res.json({ ok: true });
+        } catch (error) {
+            console.error('[TELEGRAM] Ошибка обработки webhook:', error.message);
+            res.json({ ok: true });
+        }
+    });
+
+    // GET /api/telegram/status/:userId — проверить статус подписки пользователя
+    app.get('/api/telegram/status/:userId', authenticateToken, (req, res) => {
+        try {
+            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Доступ запрещён' });
+            }
+
+            const chatId = telegram.chatIdCache.get(req.params.userId);
+            res.json({
+                userId: req.params.userId,
+                subscribed: !!chatId,
+                chatId: chatId || null
+            });
+        } catch (error) {
+            console.error('[TELEGRAM] Ошибка проверки статуса:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // POST /api/telegram/unsubscribe/:userId — отписаться (для фронтенда)
+    app.post('/api/telegram/unsubscribe/:userId', authenticateToken, (req, res) => {
+        try {
+            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Доступ запрещён' });
+            }
+
+            db.run("DELETE FROM telegram_subscriptions WHERE userId = ?", [req.params.userId]);
+            telegram.chatIdCache.delete(req.params.userId);
+            saveDatabase();
+
+            console.log(`[TELEGRAM] Пользователь ${req.params.userId} отписан через API`);
+            res.json({ message: 'Вы отписаны от Telegram-уведомлений' });
+        } catch (error) {
+            console.error('[TELEGRAM] Ошибка отписки:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // POST /api/telegram/test — тестовое сообщение (только админ)
+    app.post('/api/telegram/test', authenticateToken, requireAdmin, (req, res) => {
+        try {
+            const { chatId, message } = req.body;
+
+            if (chatId) {
+                // Отправить конкретному chatId
+                telegram.sendTelegramMessage(chatId, message || '🔔 Тестовое сообщение').then(result => {
+                    res.json({ ok: result.ok, description: result.description });
+                });
+            } else {
+                // Отправить всем подписчикам
+                const subs = db.exec("SELECT chatId FROM telegram_subscriptions");
+                if (subs.length === 0 || subs[0].values.length === 0) {
+                    return res.json({ ok: true, sent: 0, message: 'Нет подписчиков' });
+                }
+
+                let sent = 0;
+                const promises = subs[0].values.map(row => {
+                    return telegram.sendTelegramMessage(row[0], message || '🔔 Тестовое сообщение от администратора')
+                        .then(r => { if (r.ok) sent++; });
+                });
+
+                Promise.all(promises).then(() => {
+                    res.json({ ok: true, sent, total: subs[0].values.length });
+                });
+            }
+        } catch (error) {
+            console.error('[TELEGRAM] Ошибка тестового сообщения:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
