@@ -73,47 +73,6 @@ function updateThemeIcon(theme) {
     }
 }
 
-// ==================== TELEGRAM AUTH ====================
-
-// Виджет уже внедрён сервером в HTML, ничего грузить не нужно
-function loadTelegramWidget() {
-    // Виджет уже на странице
-}
-
-// Callback при успешной авторизации через Telegram
-window.onTelegramAuth = async function(user) {
-    console.log('[TELEGRAM] Данные от виджета:', user);
-
-    try {
-        const response = await fetch(`${API_URL}/auth/telegram`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user)
-        });
-
-        const data = await response.json();
-        console.log('[TELEGRAM] Ответ сервера:', response.status, data);
-
-        if (!response.ok) {
-            showToast('Ошибка', data.error || 'Ошибка входа через Telegram', 'error');
-            return;
-        }
-
-        // Сохраняем сессию
-        currentUser = data;
-        sessionStorage.setItem('currentUser', JSON.stringify(data));
-
-        closeModal();
-        checkAuth();
-        showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
-    } catch (error) {
-        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
-        console.error('[TELEGRAM] Ошибка:', error);
-    }
-};
-
-// Старые функции (оставлены для совместимости, но не используются)
-
 // Проверка авторизации
 async function checkAuth() {
     const authButtons = document.getElementById('auth-buttons');
@@ -134,7 +93,7 @@ async function checkAuth() {
             btnAdmin.style.display = 'none';
         }
 
-        // Показываем аватар Telegram если есть
+        // Показываем аватар если есть
         if (currentUser.photoUrl) {
             if (userName) {
                 userName.innerHTML = `<img src="${currentUser.photoUrl}" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:8px;">${currentUser.name}`;
@@ -271,7 +230,6 @@ function logout() {
 function openModal(type) {
     const modal = document.getElementById('auth-modal');
     modal.classList.add('active');
-    loadTelegramWidget();
 }
 
 function closeModal() {
@@ -2328,8 +2286,7 @@ function setupEventListeners() {
                 closeModal();
                 break;
             case 'register':
-                // Не используется — авторизация через Telegram
-                showToast('Информация', 'Используйте вход через Telegram', 'info');
+                openModal('register');
                 break;
             case 'close-upload-modal':
                 closeUploadModal();
@@ -2488,37 +2445,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Настраиваем event listeners (CSP-safe)
     setupEventListeners();
 
-    // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
-    
-    // Переключение вкладок Логин/Telegram
-    const authTabs = document.querySelectorAll('.auth-tab');
-    const emailAuth = document.getElementById('email-auth');
-    const telegramAuth = document.getElementById('telegram-auth');
-
-    authTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.authTab;
-            
-            // Обновляем стили вкладок
-            authTabs.forEach(t => {
-                t.classList.remove('active');
-                t.style.background = 'var(--border-color)';
-                t.style.color = 'var(--text-main)';
-            });
-            tab.classList.add('active');
-            tab.style.background = 'var(--primary-blue)';
-            tab.style.color = 'white';
-
-            // Показываем нужную форму
-            if (tabName === 'login') {
-                emailAuth.style.display = 'block';
-                telegramAuth.style.display = 'none';
-            } else {
-                emailAuth.style.display = 'none';
-                telegramAuth.style.display = 'block';
-            }
-        });
-    });
+    // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВХОД/РЕГИСТРАЦИЯ ====================
 
     // Переключение вход/регистрация
     const loginBtn = document.getElementById('login-btn');

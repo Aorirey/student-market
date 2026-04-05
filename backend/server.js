@@ -17,11 +17,12 @@ const PORT = process.env.PORT || 3000;
 // ============================================
 app.set('trust proxy', 1);
 
-// ============================================
-// ЛОГИРОВАНИЕ запросов (для отладки)
-// ============================================
+// Логирование запросов (Московское время)
+function getMoscowTime() {
+    return new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', hour12: false });
+}
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log(`[${getMoscowTime()}] ${req.method} ${req.path}`);
     next();
 });
 
@@ -32,14 +33,14 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://telegram.org"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
-            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:', 'https://telegram.org'],
-            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://telegram.org', 'https://api.telegram.org', 'https://oauth.telegram.org'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
-            frameSrc: ["https://oauth.telegram.org"],
+            frameSrc: ["'none'"],
             workerSrc: ["'self'", 'blob:']
         }
     },
@@ -96,42 +97,10 @@ const ROOT = path.join(__dirname, '..');
 app.use('/css', express.static(path.join(ROOT, 'css')));
 app.use('/js', express.static(path.join(ROOT, 'js')));
 
-// Главная страница — внедряем Telegram виджет с отложенной загрузкой
+// Главная страница
 app.get('/', (req, res) => {
     let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-    
-    const widgetHtml = botUsername
-        ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">` +
-          `<div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>` +
-          `<div id="telegram-widget-container"></div>` +
-          `<script>` +
-          `(function() {` +
-          `  var container = document.getElementById('telegram-widget-container');` +
-          `  var loading = document.getElementById('telegram-widget-loading');` +
-          `  var timeout = setTimeout(function() {` +
-          `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
-          `    if (container) container.style.display = 'none';` +
-          `  }, 5000);` +
-          `  var script = document.createElement('script');` +
-          `  script.src = 'https://telegram.org/js/telegram-widget.js?22';` +
-          `  script.setAttribute('data-telegram-login', '${botUsername}');` +
-          `  script.setAttribute('data-size', 'large');` +
-          `  script.setAttribute('data-radius', '10');` +
-          `  script.setAttribute('data-onauth', 'onTelegramAuth(user)');` +
-          `  script.setAttribute('data-request-access', 'write');` +
-          `  script.setAttribute('async', '');` +
-          `  script.onload = function() { if (loading) loading.style.display = 'none'; };` +
-          `  script.onerror = function() {` +
-          `    clearTimeout(timeout);` +
-          `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
-          `  };` +
-          `  document.body.appendChild(script);` +
-          `})();` +
-          `<\/script></div>`
-        : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
-          `<p>Виджет Telegram не настроен (добавьте TELEGRAM_BOT_USERNAME)</p></div>`;
-    html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
+    html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', '');
     res.send(html);
 });
 
@@ -199,10 +168,9 @@ if (dbMode === 'postgres') {
         }
 
         // Создание таблиц
-        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, telegram_id BIGINT UNIQUE, photo_url TEXT, login TEXT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, photo_url TEXT, login TEXT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         // Миграция для существующих БД
-        try { db.run(`ALTER TABLE users ADD COLUMN telegram_id BIGINT UNIQUE`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN login TEXT UNIQUE`); } catch(e) {}
 
@@ -618,82 +586,6 @@ if (dbMode === 'postgres') {
             res.json({ message: 'Пользователь удалён' });
         } catch (error) {
             console.error('Ошибка удаления:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' });
-        }
-    });
-
-    // ============================================
-    // TELEGRAM AUTH (для локальной разработки)
-    // ============================================
-
-    app.get('/api/config/telegram', (req, res) => {
-        const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-        console.log(`[TELEGRAM] Запрос конфига. TELEGRAM_BOT_USERNAME=${botUsername}`);
-        res.json({
-            botUsername: botUsername
-        });
-    });
-
-    function verifyTelegramAuth(data, botToken) {
-        const { hash, ...checkData } = data;
-        const dataCheckString = Object.keys(checkData)
-            .sort()
-            .map(key => `${key}=${checkData[key]}`)
-            .join('\n');
-        const secretKey = crypto.createHash('sha256').update(botToken).digest();
-        const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-        return calculatedHash === hash;
-    }
-
-    app.post('/api/auth/telegram', async (req, res) => {
-        try {
-            const botToken = process.env.TELEGRAM_BOT_TOKEN;
-            if (!botToken) {
-                return res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN не установлен' });
-            }
-            const telegramData = req.body;
-            if (!verifyTelegramAuth(telegramData, botToken)) {
-                return res.status(401).json({ error: 'Неверная подпись' });
-            }
-            const authDate = parseInt(telegramData.auth_date);
-            const now = Math.floor(Date.now() / 1000);
-            if (now - authDate > 86400) {
-                return res.status(401).json({ error: 'Данные устарели' });
-            }
-            const telegramId = telegramData.id;
-            const firstName = telegramData.first_name || '';
-            const lastName = telegramData.last_name || '';
-            const username = telegramData.username || `user_${telegramId}`;
-            const photoUrl = telegramData.photo_url || null;
-            const fullName = `${firstName} ${lastName}`.trim() || username;
-
-            let result = db.exec("SELECT * FROM users WHERE telegram_id = ?", [telegramId]);
-
-            if (result.length === 0 || result[0].values.length === 0) {
-                const hashedPassword = await bcrypt.hash(uuidv4(), 10);
-                const newId = uuidv4();
-                db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, telegram_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [newId, sanitizeHTML(fullName), `${telegramId}@telegram.user`, hashedPassword, 10000, 0, 0, telegramId]);
-                saveDatabase();
-                result = db.exec("SELECT * FROM users WHERE id = ?", [newId]);
-                console.log(`[TELEGRAM] Создан: ${fullName}`);
-            } else {
-                console.log(`[TELEGRAM] Вход: ${fullName}`);
-            }
-
-            const row = result[0].values[0];
-            res.json({
-                id: sanitizeHTML(row[0]),
-                name: sanitizeHTML(row[1]),
-                email: sanitizeHTML(row[2]),
-                balance: row[4],
-                isAdmin: Boolean(row[5]),
-                isBlocked: Boolean(row[6]),
-                telegramId: row[7] || telegramId,
-                photoUrl: photoUrl
-            });
-        } catch (error) {
-            console.error('[TELEGRAM] Ошибка:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
