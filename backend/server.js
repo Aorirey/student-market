@@ -3575,5 +3575,25 @@ if (dbMode === 'postgres') {
             console.log(`API доступно: http://localhost:${PORT}/api`);
             console.log(`Режим безопасности: включен`);
         });
+
+        // АВТО-НАСТРОЙКА TELEGRAM WEBHOOK ПРИ ЗАПУСКЕ (на Render)
+        if (process.env.RENDER_EXTERNAL_URL && process.env.TELEGRAM_BOT_TOKEN) {
+            (async () => {
+                const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/api/telegram/webhook`;
+                const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+                try {
+                    const res = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: webhookUrl })
+                    });
+                    const data = await res.json();
+                    if (data.ok) console.log(`[TELEGRAM] ✅ Webhook автоматически установлен: ${webhookUrl}`);
+                    else console.error(`[TELEGRAM] ❌ Ошибка установки webhook: ${data.description}`);
+                } catch (e) {
+                    console.error('[TELEGRAM] Ошибка настройки webhook:', e.message);
+                }
+            })();
+        }
     });
 }
