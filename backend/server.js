@@ -3252,6 +3252,34 @@ if (dbMode === 'postgres') {
     // TELEGRAM БОТ: Подписка на уведомления
     // ============================================
 
+    // GET /api/telegram/setup — АВТО-НАСТРОЙКА WEBHOOK (вызвать один раз через браузер)
+    app.get('/api/telegram/setup', async (req, res) => {
+        if (!process.env.TELEGRAM_BOT_TOKEN) {
+            return res.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not set in .env' });
+        }
+
+        // ВАЖНО: Замените на ваш реальный URL на Render!
+        const serverUrl = process.env.RENDER_EXTERNAL_URL || 'https://student-market.onrender.com';
+        const webhookUrl = `${serverUrl}/api/telegram/webhook`;
+        const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: webhookUrl })
+            });
+            const data = await response.json();
+            res.json({
+                message: 'Webhook setup attempted',
+                webhookUrl,
+                telegramResponse: data
+            });
+        } catch (err) {
+            res.json({ ok: false, error: err.message });
+        }
+    });
+
     // POST /api/telegram/webhook — webhook от Telegram Bot API
     app.post('/api/telegram/webhook', express.json(), (req, res) => {
         try {
