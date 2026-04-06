@@ -1375,10 +1375,10 @@ app.get('/', (req, res) => {
 
 const telegram = require('./telegram');
 
-initDatabase().then((db) => {
+initDatabase().then(async (db) => {
     // Инициализация Telegram
-    telegram.initTelegramTable(db);
-    telegram.loadChatIdCache(db);
+    await telegram.initTelegramTable(db);
+    await telegram.loadChatIdCache(db);
 
     app.listen(PORT, () => {
         console.log(`✅ Сервер запущен: http://localhost:${PORT}`);

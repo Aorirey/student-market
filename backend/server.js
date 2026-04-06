@@ -235,8 +235,8 @@ if (dbMode === 'postgres') {
         }
 
         // Инициализация таблицы Telegram
-        telegram.initTelegramTable(db);
-        telegram.loadChatIdCache(db);
+        await telegram.initTelegramTable(db);
+        await telegram.loadChatIdCache(db);
 
         console.log('База данных инициализирована');
     }
