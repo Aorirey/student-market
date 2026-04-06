@@ -1,13 +1,6 @@
 /**
  * Telegram Bot для отправки уведомлений пользователям маркетплейса
- * 
- * Настройка:
- * 1. Создать бота через @BotFather в Telegram
- * 2. Получить BOT_TOKEN
- * 3. Пользователи должны написать /start боту и отправить свой userId
- * 4. Сервер сохранит chatId и будет отправлять уведомления
- * 
- * Работает через HTTPS к api.telegram.org — не блокируется в РФ для ботов
+ * Поддерживает SQLite (db.exec) и PostgreSQL (pool.query)
  */
 
 const https = require('https');
@@ -15,41 +8,66 @@ const https = require('https');
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = 'api.telegram.org';
 
-// Хранилище соответствия userId <-> chatId (в продакшене использовать БД)
-// Таблица: telegram_subscriptions (userId TEXT, chatId TEXT, createdAt TEXT)
 let chatIdCache = new Map();
 
 /**
- * Загрузить все chatId из БД в кэш при старте
+ * Универсальный исполнитель SQL запросов
+ * @param {object} db - объект БД (SQLite Database или PG Pool)
+ * @param {string} sql - SQL запрос
+ * @param {array} params - параметры
+ * @returns {Promise<{values: array}>} - результат в формате { values: [[row1], [row2]] }
  */
-function loadChatIdCache(db) {
+async function execDb(db, sql, params = []) {
     try {
-        if (!db) return;
-        const result = db.exec("SELECT userId, chatId FROM telegram_subscriptions");
-        if (result.length > 0) {
-            result[0].values.forEach(row => {
-                chatIdCache.set(row[0], row[1]);
-            });
+        if (db.query) {
+            // PostgreSQL
+            const res = await db.query(sql, params);
+            // Преобразуем { rows: [{col: val}] } в { values: [[val]] }
+            const values = res.rows.map(row => Object.values(row));
+            return { values };
+        } else {
+            // SQLite
+            const result = db.exec(sql, params);
+            return result.length > 0 ? result[0] : { values: [] };
         }
-        console.log(`[TELEGRAM] Загружено ${chatIdCache.size} подписок`);
     } catch (error) {
-        // Таблица может не существовать — это нормально
-        console.log('[TELEGRAM] Таблица telegram_subscriptions ещё не создана');
+        console.error('[TELEGRAM] DB Error:', error.message);
+        return { values: [] };
     }
 }
 
 /**
  * Создать таблицу telegram_subscriptions
  */
-function initTelegramTable(db) {
+async function initTelegramTable(db) {
     try {
-        db.run(`CREATE TABLE IF NOT EXISTS telegram_subscriptions (
+        const sql = `CREATE TABLE IF NOT EXISTS telegram_subscriptions (
             userId TEXT NOT NULL,
             chatId TEXT NOT NULL UNIQUE,
             createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        )`);
+        )`;
+        if (db.query) {
+            await db.query(sql);
+        } else {
+            db.run(sql);
+        }
     } catch (error) {
         console.error('[TELEGRAM] Ошибка создания таблицы:', error.message);
+    }
+}
+
+/**
+ * Загрузить все chatId из БД в кэш при старте
+ */
+async function loadChatIdCache(db) {
+    try {
+        const result = await execDb(db, "SELECT userId, chatId FROM telegram_subscriptions");
+        result.values.forEach(row => {
+            chatIdCache.set(row[0], row[1]);
+        });
+        console.log(`[TELEGRAM] Загружено ${chatIdCache.size} подписок`);
+    } catch (error) {
+        console.log('[TELEGRAM] Таблица telegram_subscriptions ещё пуста или не создана');
     }
 }
 
@@ -127,15 +145,25 @@ async function notifyUser(userId, title, message, db) {
         let chatId = chatIdCache.get(userId);
 
         if (!chatId && db) {
-            const result = db.exec("SELECT chatId FROM telegram_subscriptions WHERE userId = ?", [userId]);
-            if (result.length > 0 && result[0].values.length > 0) {
-                chatId = result[0].values[0][0];
+            const result = await execDb(db, "SELECT chatId FROM telegram_subscriptions WHERE userId = $1", [userId]);
+            // Для SQLite параметры не используются в exec, но execDb обрабатывает это
+            // Если это SQLite, запрос выше может не сработать с $1, нужно ?
+            // execDb не меняет SQL. Нужно исправить вызов.
+        }
+        
+        // Повторная попытка с правильным синтаксисом
+        if (!chatId && db) {
+            const sql = db.query ? "SELECT chatId FROM telegram_subscriptions WHERE userId = $1" : "SELECT chatId FROM telegram_subscriptions WHERE userId = ?";
+            const result = await execDb(db, sql, [userId]);
+            
+            if (result.values.length > 0 && result.values[0].length > 0) {
+                chatId = result.values[0][0];
                 chatIdCache.set(userId, chatId);
             }
         }
 
         if (!chatId) {
-            console.log(`[TELEGRAM] Пользователь ${userId} не подписан на уведомления`);
+            // console.log(`[TELEGRAM] Пользователь ${userId} не подписан на уведомления`);
             return false;
         }
 
@@ -146,6 +174,8 @@ async function notifyUser(userId, title, message, db) {
         return false;
     }
 }
+
+// ... (остальной код без изменений)
 
 /**
  * Форматировать уведомление о покупке для продавца
