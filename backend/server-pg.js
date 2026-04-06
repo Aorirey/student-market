@@ -142,6 +142,21 @@ function sanitizeHTML(str) {
     return String(str).replace(/[&<>"'/]/g, char => map[char]);
 }
 
+// Helper: автоматическое создание уведомлений + Telegram
+function createNotification(userId, title, message, type, db) {
+    try {
+        db.query("INSERT INTO notifications (userId, title, message, type) VALUES ($1, $2, $3, $4)",
+            [userId, title, message, type]);
+
+        // Отправляем Telegram-уведомление
+        telegram.notifyUser(userId, title, message, db).catch(err => {
+            console.error('[TELEGRAM] Ошибка отправки уведомления:', err.message);
+        });
+    } catch (error) {
+        console.error('[NOTIFICATION] Ошибка создания уведомления:', error.message);
+    }
+}
+
 // ============================================
 // Инициализация БД
 // ============================================
@@ -1216,11 +1231,37 @@ app.get('/', (req, res) => {
 // Запуск сервера
 // ============================================
 
-initDatabase().then(() => {
+const telegram = require('./telegram');
+
+initDatabase().then((db) => {
+    // Инициализация Telegram
+    telegram.initTelegramTable(db);
+    telegram.loadChatIdCache(db);
+
     app.listen(PORT, () => {
         console.log(`✅ Сервер запущен: http://localhost:${PORT}`);
         console.log(`📡 API: http://localhost:${PORT}/api`);
         console.log(`🔒 Trust proxy: включён`);
         console.log(`🌍 ENV: ${process.env.NODE_ENV || 'development'}`);
     });
+
+    // АВТО-НАСТРОЙКА TELEGRAM WEBHOOK ПРИ ЗАПУСКЕ (на Render)
+    if (process.env.RENDER_EXTERNAL_URL && process.env.TELEGRAM_BOT_TOKEN) {
+        (async () => {
+            const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/api/telegram/webhook`;
+            const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: webhookUrl })
+                });
+                const data = await res.json();
+                if (data.ok) console.log(`[TELEGRAM] ✅ Webhook автоматически установлен: ${webhookUrl}`);
+                else console.error(`[TELEGRAM] ❌ Ошибка установки webhook: ${data.description}`);
+            } catch (e) {
+                console.error('[TELEGRAM] Ошибка настройки webhook:', e.message);
+            }
+        })();
+    }
 });
