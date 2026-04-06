@@ -3252,6 +3252,34 @@ if (dbMode === 'postgres') {
     // TELEGRAM БОТ: Подписка на уведомления
     // ============================================
 
+    // GET /api/telegram/setup — АВТО-НАСТРОЙКА WEBHOOK (вызвать один раз через браузер)
+    app.get('/api/telegram/setup', async (req, res) => {
+        if (!process.env.TELEGRAM_BOT_TOKEN) {
+            return res.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not set in .env' });
+        }
+
+        // ВАЖНО: Замените на ваш реальный URL на Render!
+        const serverUrl = process.env.RENDER_EXTERNAL_URL || 'https://student-market.onrender.com';
+        const webhookUrl = `${serverUrl}/api/telegram/webhook`;
+        const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: webhookUrl })
+            });
+            const data = await response.json();
+            res.json({
+                message: 'Webhook setup attempted',
+                webhookUrl,
+                telegramResponse: data
+            });
+        } catch (err) {
+            res.json({ ok: false, error: err.message });
+        }
+    });
+
     // POST /api/telegram/webhook — webhook от Telegram Bot API
     app.post('/api/telegram/webhook', express.json(), (req, res) => {
         try {
@@ -3547,5 +3575,25 @@ if (dbMode === 'postgres') {
             console.log(`API доступно: http://localhost:${PORT}/api`);
             console.log(`Режим безопасности: включен`);
         });
+
+        // АВТО-НАСТРОЙКА TELEGRAM WEBHOOK ПРИ ЗАПУСКЕ (на Render)
+        if (process.env.RENDER_EXTERNAL_URL && process.env.TELEGRAM_BOT_TOKEN) {
+            (async () => {
+                const webhookUrl = `${process.env.RENDER_EXTERNAL_URL}/api/telegram/webhook`;
+                const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+                try {
+                    const res = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: webhookUrl })
+                    });
+                    const data = await res.json();
+                    if (data.ok) console.log(`[TELEGRAM] ✅ Webhook автоматически установлен: ${webhookUrl}`);
+                    else console.error(`[TELEGRAM] ❌ Ошибка установки webhook: ${data.description}`);
+                } catch (e) {
+                    console.error('[TELEGRAM] Ошибка настройки webhook:', e.message);
+                }
+            })();
+        }
     });
 }
