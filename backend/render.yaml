@@ -14,9 +14,11 @@ services:
         fromDatabase:
           name: student-db
           property: connectionString
-      - key: TELEGRAM_BOT_TOKEN
+      - key: VK_CLIENT_ID
         sync: false
-      - key: TELEGRAM_BOT_USERNAME
+      - key: VK_CLIENT_SECRET
+        sync: false
+      - key: VK_REDIRECT_URI
         sync: false
 
 databases:

@@ -73,46 +73,27 @@ function updateThemeIcon(theme) {
     }
 }
 
-// ==================== TELEGRAM AUTH ====================
-
-// Виджет уже внедрён сервером в HTML, ничего грузить не нужно
-function loadTelegramWidget() {
-    // Виджет уже на странице
+// Форматирование даты в московском времени
+function formatMoscowTime(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        hour12: false,
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
-// Callback при успешной авторизации через Telegram
-window.onTelegramAuth = async function(user) {
-    console.log('[TELEGRAM] Данные от виджета:', user);
-
-    try {
-        const response = await fetch(`${API_URL}/auth/telegram`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user)
-        });
-
-        const data = await response.json();
-        console.log('[TELEGRAM] Ответ сервера:', response.status, data);
-
-        if (!response.ok) {
-            showToast('Ошибка', data.error || 'Ошибка входа через Telegram', 'error');
-            return;
-        }
-
-        // Сохраняем сессию
-        currentUser = data;
-        sessionStorage.setItem('currentUser', JSON.stringify(data));
-
-        closeModal();
-        checkAuth();
-        showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
-    } catch (error) {
-        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
-        console.error('[TELEGRAM] Ошибка:', error);
-    }
-};
-
-// Старые функции (оставлены для совместимости, но не используются)
+// Форматирование короткой даты в московском времени
+function formatMoscowDate(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('ru-RU', {
+        timeZone: 'Europe/Moscow'
+    });
+}
 
 // Проверка авторизации
 async function checkAuth() {
@@ -134,7 +115,7 @@ async function checkAuth() {
             btnAdmin.style.display = 'none';
         }
 
-        // Показываем аватар Telegram если есть
+        // Показываем аватар если есть
         if (currentUser.photoUrl) {
             if (userName) {
                 userName.innerHTML = `<img src="${currentUser.photoUrl}" style="width:24px;height:24px;border-radius:50%;vertical-align:middle;margin-right:8px;">${currentUser.name}`;
@@ -257,6 +238,58 @@ async function login() {
     }
 }
 
+// Авторизация через ВКонтакте
+async function loginWithVK() {
+    try {
+        // Получаем конфиг VK
+        const configRes = await fetch(`${API_URL}/config/vk`);
+        const config = await configRes.json();
+
+        if (!config.clientId) {
+            showToast('Ошибка', 'VK авторизация не настроена', 'error');
+            return;
+        }
+
+        const redirectUri = config.redirectUri || `${window.location.origin}/auth/vk/callback`;
+        const authUrl = `https://oauth.vk.com/authorize?client_id=${config.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=email`;
+
+        // Открываем VK OAuth в новом окне
+        const authWindow = window.open(authUrl, 'vk_auth', 'width=600,height=500');
+
+        // Слушаем сообщение от окна
+        const handler = async (event) => {
+            if (event.data && event.data.type === 'vk_auth_code') {
+                window.removeEventListener('message', handler);
+                authWindow.close();
+
+                const code = event.data.code;
+                const response = await fetch(`${API_URL}/auth/vk`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    showToast('Ошибка', data.error || 'Ошибка входа через VK', 'error');
+                    return;
+                }
+
+                currentUser = data;
+                sessionStorage.setItem('currentUser', JSON.stringify(data));
+                closeModal();
+                checkAuth();
+                showToast('Успешно', `Добро пожаловать, ${data.name}!`, 'success');
+            }
+        };
+
+        window.addEventListener('message', handler);
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка подключения к VK', 'error');
+        console.error('[VK] Ошибка:', error);
+    }
+}
+
 // Выход
 function logout() {
     currentUser = null;
@@ -271,7 +304,6 @@ function logout() {
 function openModal(type) {
     const modal = document.getElementById('auth-modal');
     modal.classList.add('active');
-    loadTelegramWidget();
 }
 
 function closeModal() {
@@ -514,12 +546,21 @@ async function renderProducts(category, filterDiscipline) {
             const priceEl = document.createElement('span');
             priceEl.className = 'price';
             priceEl.textContent = `${item.price} ₽`;
-            
+
             const buyBtn = document.createElement('button');
             buyBtn.className = 'buy-btn';
-            buyBtn.textContent = 'Купить';
-            buyBtn.onclick = () => buyProduct(item.id);
             
+            // Проверяем, является ли текущий пользователь продавцом
+            if (currentUser && item.sellerId === currentUser.id) {
+                buyBtn.textContent = 'Ваш товар';
+                buyBtn.disabled = true;
+                buyBtn.style.cursor = 'default';
+                buyBtn.style.opacity = '0.6';
+            } else {
+                buyBtn.textContent = 'Купить';
+                buyBtn.onclick = () => buyProduct(item.id);
+            }
+
             const footer = document.createElement('div');
             footer.className = 'card-footer';
             footer.appendChild(priceEl);
@@ -704,12 +745,21 @@ async function openSellerPage(sellerId, sellerName, event) {
                 const priceEl = document.createElement('span');
                 priceEl.className = 'price';
                 priceEl.textContent = `${item.price} ₽`;
-                
+
                 const buyBtn = document.createElement('button');
                 buyBtn.className = 'buy-btn';
-                buyBtn.textContent = 'Купить';
-                buyBtn.onclick = () => buyProduct(item.id);
                 
+                // Проверяем, является ли текущий пользователь продавцом
+                if (currentUser && item.sellerId === currentUser.id) {
+                    buyBtn.textContent = 'Ваш товар';
+                    buyBtn.disabled = true;
+                    buyBtn.style.cursor = 'default';
+                    buyBtn.style.opacity = '0.6';
+                } else {
+                    buyBtn.textContent = 'Купить';
+                    buyBtn.onclick = () => buyProduct(item.id);
+                }
+
                 const footer = document.createElement('div');
                 footer.className = 'card-footer';
                 footer.appendChild(priceEl);
@@ -749,7 +799,7 @@ async function openSellerPage(sellerId, sellerName, event) {
                 
                 const date = document.createElement('span');
                 date.className = 'review-date';
-                date.textContent = new Date(review.createdAt).toLocaleDateString();
+                date.textContent = formatMoscowDate(review.createdAt);
                 
                 header.appendChild(stars);
                 header.appendChild(date);
@@ -1149,7 +1199,7 @@ async function loadCabinetData() {
                 
                 const metaEl = document.createElement('span');
                 metaEl.className = 'meta';
-                metaEl.textContent = `${purchase.price} ₽ • ${new Date(purchase.date).toLocaleDateString()}`;
+                metaEl.textContent = `${purchase.price} ₽ • ${formatMoscowDate(purchase.date)}`;
                 
                 infoDiv.appendChild(titleEl);
                 infoDiv.appendChild(metaEl);
@@ -1241,7 +1291,7 @@ async function loadSalesData() {
                     
                     const metaEl = document.createElement('span');
                     metaEl.className = 'meta';
-                    metaEl.textContent = `${sale.price} ₽ • ${new Date(sale.date).toLocaleDateString()} • Покупатель: ${sale.buyerId}`;
+                    metaEl.textContent = `${sale.price} ₽ • ${formatMoscowDate(sale.date)} • Покупатель: ${sale.buyerName || sale.buyerId}`;
                     
                     infoDiv.appendChild(titleEl);
                     infoDiv.appendChild(metaEl);
@@ -1747,13 +1797,25 @@ function closeUploadModal() {
 }
 
 // Написать покупателю из модального окна загрузки
-function contactSellerFromModal() {
+async function contactSellerFromModal() {
     const purchaseId = document.getElementById('upload-purchase-id').value;
     const sellerId = document.getElementById('upload-seller-id').value;
     const buyerId = document.getElementById('upload-buyer-id').value;
-    
+
+    // Получаем имя покупателя
+    let buyerName = 'Покупатель';
+    try {
+        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`);
+        const buyer = await buyerResponse.json();
+        if (buyer && buyer.name) {
+            buyerName = buyer.name;
+        }
+    } catch (error) {
+        console.error('Ошибка получения имени покупателя:', error);
+    }
+
     closeUploadModal();
-    openChat(purchaseId, buyerId, 'Заказ');
+    openChat(purchaseId, buyerName, 'Заказ');
 }
 
 // Написать продавцу из модального окна подтверждения
@@ -1916,8 +1978,8 @@ async function loadChatsList() {
 
         // Объединяем покупки и продажи
         const allChats = [
-            ...purchases.map(p => ({ ...p, type: 'buyer', counterpartName: 'Продавец' })),
-            ...sales.map(s => ({ ...s, type: 'seller', counterpartName: 'Покупатель' }))
+            ...purchases.map(p => ({ ...p, type: 'buyer', counterpartName: p.sellerName || 'Продавец' })),
+            ...sales.map(s => ({ ...s, type: 'seller', counterpartName: s.buyerName || 'Покупатель' }))
         ];
 
         if (allChats.length === 0) {
@@ -2000,7 +2062,7 @@ async function loadChatMessages() {
             if (msg.createdAt) {
                 const metaDiv = document.createElement('div');
                 metaDiv.className = 'chat-message-meta';
-                metaDiv.textContent = new Date(msg.createdAt).toLocaleString();
+                metaDiv.textContent = formatMoscowTime(msg.createdAt);
                 messageDiv.appendChild(metaDiv);
             }
 
@@ -2219,7 +2281,7 @@ async function loadNotifications() {
 
             const timeEl = document.createElement('div');
             timeEl.className = 'notification-time';
-            timeEl.textContent = new Date(notification.createdAt).toLocaleString();
+            timeEl.textContent = formatMoscowTime(notification.createdAt);
 
             item.appendChild(titleEl);
             item.appendChild(messageEl);
@@ -2328,8 +2390,10 @@ function setupEventListeners() {
                 closeModal();
                 break;
             case 'register':
-                // Не используется — авторизация через Telegram
-                showToast('Информация', 'Используйте вход через Telegram', 'info');
+                openModal('register');
+                break;
+            case 'vk-login':
+                loginWithVK();
                 break;
             case 'close-upload-modal':
                 closeUploadModal();
@@ -2470,6 +2534,17 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('StudentMarket загружен');
 
+    // Проверяем VK OAuth callback
+    if (window.location.pathname === '/auth/vk/callback') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        if (code) {
+            window.opener.postMessage({ type: 'vk_auth_code', code }, window.location.origin);
+            window.close();
+            return;
+        }
+    }
+
     // Инициализация темы
     initTheme();
 
@@ -2488,37 +2563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Настраиваем event listeners (CSP-safe)
     setupEventListeners();
 
-    // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ====================
-    
-    // Переключение вкладок Логин/Telegram
-    const authTabs = document.querySelectorAll('.auth-tab');
-    const emailAuth = document.getElementById('email-auth');
-    const telegramAuth = document.getElementById('telegram-auth');
-
-    authTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.authTab;
-            
-            // Обновляем стили вкладок
-            authTabs.forEach(t => {
-                t.classList.remove('active');
-                t.style.background = 'var(--border-color)';
-                t.style.color = 'var(--text-main)';
-            });
-            tab.classList.add('active');
-            tab.style.background = 'var(--primary-blue)';
-            tab.style.color = 'white';
-
-            // Показываем нужную форму
-            if (tabName === 'login') {
-                emailAuth.style.display = 'block';
-                telegramAuth.style.display = 'none';
-            } else {
-                emailAuth.style.display = 'none';
-                telegramAuth.style.display = 'block';
-            }
-        });
-    });
+    // ==================== АВТОРИЗАЦИЯ: ПЕРЕКЛЮЧЕНИЕ ВХОД/РЕГИСТРАЦИЯ ====================
 
     // Переключение вход/регистрация
     const loginBtn = document.getElementById('login-btn');

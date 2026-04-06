@@ -298,12 +298,6 @@
         <div class="modal-content">
             <span class="modal-close" data-action="close-modal">&times;</span>
 
-            <!-- Вкладки авторизации -->
-            <div class="auth-tabs" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button class="auth-tab active" data-auth-tab="login" style="flex: 1; padding: 10px; border: none; background: var(--primary-blue); color: white; border-radius: 8px; cursor: pointer; font-size: 1rem;">Логин</button>
-                <button class="auth-tab" data-auth-tab="telegram" style="flex: 1; padding: 10px; border: none; background: var(--border-color); color: var(--text-main); border-radius: 8px; cursor: pointer; font-size: 1rem;">Telegram</button>
-            </div>
-
             <!-- Форма входа Логин/пароль -->
             <div id="email-auth" class="auth-form">
                 <h2>Вход в аккаунт</h2>
@@ -325,6 +319,8 @@
                         <input type="password" id="login-password" placeholder="Пароль" required style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; background: rgba(255, 255, 255, 0.4); color: var(--text-main); margin-bottom: 12px;">
                     </div>
                     <button type="submit" class="btn-signup" style="width: 100%; margin-bottom: 10px;">Войти</button>
+                <div style="text-align:center;margin:15px 0;color:var(--text-secondary);">или</div>
+                <div id="vk-login-container"></div>
                 </form>
 
                 <!-- Форма регистрации (скрыта) -->
@@ -340,40 +336,6 @@
                     </div>
                     <button type="submit" class="btn-signup" style="width: 100%; margin-bottom: 10px;">Зарегистрироваться</button>
                 </form>
-            </div>
-
-            <!-- Telegram Login Widget (скрыт по умолчанию) -->
-            <div id="telegram-auth" class="auth-form" style="display: none;">
-                <h2>Вход через Telegram</h2>
-                <p style="color: var(--text-secondary); margin-bottom: 20px; text-align: center;">Войдите с помощью вашего Telegram аккаунта</p>
-                <div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">
-                    <div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>
-                    <div id="telegram-widget-container"></div>
-                    <script>
-                    (function() {
-                        var container = document.getElementById('telegram-widget-container');
-                        var loading = document.getElementById('telegram-widget-loading');
-                        var timeout = setTimeout(function() {
-                            if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';
-                            if (container) container.style.display = 'none';
-                        }, 5000);
-                        var script = document.createElement('script');
-                        script.src = 'https://telegram.org/js/telegram-widget.js?22';
-                        script.setAttribute('data-telegram-login', 'StudMarketRegistrationBot');
-                        script.setAttribute('data-size', 'large');
-                        script.setAttribute('data-radius', '10');
-                        script.setAttribute('data-onauth', 'onTelegramAuth(user)');
-                        script.setAttribute('data-request-access', 'write');
-                        script.setAttribute('async', '');
-                        script.onload = function() { if (loading) loading.style.display = 'none'; };
-                        script.onerror = function() {
-                            clearTimeout(timeout);
-                            if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';
-                        };
-                        document.body.appendChild(script);
-                    })();
-                    </script>
-                </div>
             </div>
         </div>
     </div>
@@ -444,5 +406,86 @@
     </footer>
 
     <script src="/js/script.js"></script>
+
+    <!-- VK ID OneTap виджет -->
+    <div id="vk-login-container-inline" style="display:none;"></div>
+    <script src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js" defer></script>
+    <script>
+        window.initVKID = function() {
+            if (!window.VKIDSDK) {
+                console.log('[VKID] SDK не загрузился');
+                return;
+            }
+            const VKID = window.VKIDSDK;
+            VKID.Config.init({
+                app: 54526642,
+                redirectUrl: window.location.origin + '/auth/vk/callback',
+                responseMode: VKID.ConfigResponseMode.Callback,
+                source: VKID.ConfigSource.LOWCODE,
+                scope: '',
+            });
+
+            const oneTap = new VKID.OneTap();
+            const container = document.getElementById('vk-login-container-inline');
+            if (!container) return;
+
+            oneTap.render({
+                container: container,
+                showAlternativeLogin: true,
+                styles: { borderRadius: 16 }
+            })
+            .on(VKID.WidgetEvents.ERROR, function(error) {
+                console.error('[VKID] Ошибка:', error);
+            })
+            .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, function(payload) {
+                const code = payload.code;
+                const deviceId = payload.device_id;
+                VKID.Auth.exchangeCode(code, deviceId)
+                    .then(function(data) {
+                        // Отправляем code на бэкенд
+                        fetch('/api/auth/vk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: code, device_id: deviceId })
+                        })
+                        .then(function(res) { return res.json(); })
+                        .then(function(userData) {
+                            if (userData.id) {
+                                sessionStorage.setItem('currentUser', JSON.stringify(userData));
+                                window.currentUser = userData;
+                                location.reload();
+                            } else {
+                                alert('Ошибка входа: ' + (userData.error || 'Неизвестная ошибка'));
+                            }
+                        })
+                        .catch(function(e) {
+                            console.error('[VKID] Ошибка отправки на сервер:', e);
+                        });
+                    })
+                    .catch(function(error) {
+                        console.error('[VKID] Ошибка exchangeCode:', error);
+                    });
+            });
+
+            // Копируем виджет в модалку
+            const modalContainer = document.getElementById('vk-login-container');
+            if (modalContainer && container.children.length > 0) {
+                modalContainer.innerHTML = '';
+                modalContainer.appendChild(container.firstElementChild.cloneNode(true));
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.VKIDSDK) {
+                window.initVKID();
+            } else {
+                window.addEventListener('load', function() {
+                    setTimeout(function() {
+                        if (window.VKIDSDK) window.initVKID();
+                    }, 1000);
+                });
+            }
+        });
+    </script>
 </body>
 </html>

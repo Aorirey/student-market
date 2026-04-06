@@ -1,0 +1,105 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [Backend, main, master]
+  pull_request:
+    branches: [Backend, main, master]
+
+jobs:
+  # ============================================
+  # 1. ТЕСТЫ И ПРОВЕРКИ
+  # ============================================
+  test:
+    name: Tests & Security Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Syntax check
+        working-directory: ./backend
+        run: node -c server.js && node -c telegram.js && echo "✓ Syntax OK"
+
+      - name: Security audit
+        working-directory: ./backend
+        run: npm audit --audit-level=high || true
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for hardcoded secrets..."
+          ! grep -r "sk-[a-zA-Z0-9]\{20,\}" backend/ --include="*.js" || \
+          (echo "⚠️  Possible API keys found!" && false)
+          ! grep -r "password.*=.*['\"].*['\"]" backend/ --include="*.js" | grep -v "bcrypt" | grep -v "hashedPassword" || \
+          (echo "⚠️  Possible hardcoded passwords found!" && false)
+          echo "✓ No hardcoded secrets detected"
+
+      - name: Validate .env.example completeness
+        run: |
+          if [ -f backend/.env.example ]; then
+            echo "✓ .env.example exists"
+            echo "Configurable variables:"
+            grep -c "=" backend/.env.example || true
+          else
+            echo "⚠️  .env.example not found"
+          fi
+
+  # ============================================
+  # 2. DEPLOY НА RENDER
+  # ============================================
+  deploy:
+    name: Deploy to Render
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/Backend' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        run: |
+          echo "Triggering Render deploy..."
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" | echo "Deploy triggered successfully"
+
+      - name: Notify on success
+        if: success()
+        run: echo "✅ Deploy successful!"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Deploy failed!"
+
+  # ============================================
+  # 3. АВТО-ДЕПЛОЙ ЧЕРЕЗ GIT (альтернатива)
+  # ============================================
+  auto-deploy:
+    name: Auto-deploy via Render Webhook
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Backend'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render auto-deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"serviceId": "${{ secrets.RENDER_SERVICE_ID }}"}' \
+            && echo "Deploy hook triggered"

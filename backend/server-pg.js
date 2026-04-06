@@ -18,11 +18,12 @@ const PORT = process.env.PORT || 3000;
 // ============================================
 app.set('trust proxy', 1);
 
-// ============================================
-// ЛОГИРОВАНИЕ запросов (для отладки)
-// ============================================
+// Логирование запросов (Московское время)
+function getMoscowTime() {
+    return new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', hour12: false });
+}
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log(`[${getMoscowTime()}] ${req.method} ${req.path}`);
     next();
 });
 
@@ -33,14 +34,14 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://telegram.org"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://unpkg.com"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
-            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:', 'https://telegram.org'],
-            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://telegram.org', 'https://api.telegram.org', 'https://oauth.telegram.org'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:', 'https://telegram.org'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://oauth.vk.com', 'https://api.vk.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
-            frameSrc: ["https://oauth.telegram.org"],
+            frameSrc: ["'none'"],
             workerSrc: ["'self'", 'blob:']
         }
     },
@@ -103,50 +104,11 @@ const ROOT = path.join(__dirname, '..');
 app.use('/css', express.static(path.join(ROOT, 'css')));
 app.use('/js', express.static(path.join(ROOT, 'js')));
 
-// Главная страница — внедряем Telegram виджет с отложенной загрузкой
+// Главная страница
 app.get('/', (req, res) => {
-    console.log('[INDEX] GET / запрошен');
     let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || null;
-    console.log(`[INDEX] TELEGRAM_BOT_USERNAME=${botUsername}`);
-
-    const widgetHtml = botUsername
-            ? `<div id="telegram-login-widget" style="display:flex;justify-content:center;min-height:60px;align-items:center;">` +
-              `<div id="telegram-widget-loading" style="color:var(--text-secondary);">Загрузка Telegram...</div>` +
-              `<div id="telegram-widget-container"></div>` +
-              `<script>` +
-              `(function() {` +
-              `  var container = document.getElementById('telegram-widget-container');` +
-              `  var loading = document.getElementById('telegram-widget-loading');` +
-              `  var timeout = setTimeout(function() {` +
-              `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
-              `    if (container) container.style.display = 'none';` +
-              `  }, 5000);` +
-              `  var script = document.createElement('script');` +
-              `  script.src = 'https://telegram.org/js/telegram-widget.js?22';` +
-              `  script.setAttribute('data-telegram-login', '${botUsername}');` +
-              `  script.setAttribute('data-size', 'large');` +
-              `  script.setAttribute('data-radius', '10');` +
-              `  script.setAttribute('data-onauth', 'onTelegramAuth(user)');` +
-              `  script.setAttribute('data-request-access', 'write');` +
-              `  script.setAttribute('async', '');` +
-              `  script.onload = function() { if (loading) loading.style.display = 'none'; };` +
-              `  script.onerror = function() {` +
-              `    clearTimeout(timeout);` +
-              `    if (loading) loading.innerHTML = '<span style="color:var(--text-secondary);">Telegram недоступен, используйте Email</span>';` +
-              `  };` +
-              `  document.body.appendChild(script);` +
-              `})();` +
-              `<\/script></div>`
-            : `<div id="telegram-login-widget" style="text-align:center;color:var(--text-secondary);">` +
-              `<p>Виджет Telegram не настроен</p></div>`;
-        html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', widgetHtml);
-        console.log('[INDEX] HTML отправлен');
-        res.send(html);
-    } catch (err) {
-        console.error('[INDEX] Ошибка:', err.message);
-        res.send('Ошибка сервера');
-    }
+    html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', '');
+    res.send(html);
 });
 
 // ============================================
@@ -216,16 +178,16 @@ async function initDatabase() {
             is_blocked BOOLEAN DEFAULT false,
             rating REAL DEFAULT 0,
             review_count INTEGER DEFAULT 0,
-            telegram_id BIGINT UNIQUE,
             photo_url TEXT,
             login TEXT UNIQUE,
+            vk_id BIGINT UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
         // Миграция: добавляем колонки если их нет (для существующих БД)
-        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT UNIQUE`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT UNIQUE`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vk_id BIGINT UNIQUE`);
 
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
@@ -568,29 +530,131 @@ app.delete('/api/users/:id', userIdValidator, async (req, res) => {
 });
 
 // ============================================
-// TELEGRAM AUTH
+// АВТОРИЗАЦИЯ: ВКонтакте
 // ============================================
 
-// Получить username бота для виджета
-app.get('/api/config/telegram', (req, res) => {
+// Конфиг VK для фронтенда
+app.get('/api/config/vk', (req, res) => {
     res.json({
-        botUsername: process.env.TELEGRAM_BOT_USERNAME || null
+        clientId: process.env.VK_CLIENT_ID || null,
+        redirectUri: process.env.VK_REDIRECT_URI || null
     });
 });
 
-// Верификация данных от Telegram Login Widget
-function verifyTelegramAuth(data, botToken) {
-    const { hash, ...checkData } = data;
-    const dataCheckString = Object.keys(checkData)
-        .sort()
-        .map(key => `${key}=${checkData[key]}`)
-        .join('\n');
+// OAuth callback — обмен code на token (VK ID SDK)
+app.post('/api/auth/vk', async (req, res) => {
+    try {
+        const { code, device_id } = req.body;
+        if (!code) {
+            return res.status(400).json({ error: 'Код авторизации не передан' });
+        }
 
-    const secretKey = crypto.createHash('sha256').update(botToken).digest();
-    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+        const clientId = process.env.VK_CLIENT_ID;
+        const clientSecret = process.env.VK_CLIENT_SECRET;
+        const redirectUri = process.env.VK_REDIRECT_URI;
 
-    return calculatedHash === hash;
-}
+        if (!clientId || !clientSecret) {
+            return res.status(500).json({ error: 'VK авторизация не настроена' });
+        }
+
+        // Обмениваем code на access_token через VK ID
+        const tokenParams = {
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            code: code
+        };
+        if (device_id) {
+            tokenParams.device_id = device_id;
+        }
+
+        const tokenResponse = await fetch('https://id.vk.com/oauth2/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(tokenParams)
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenData.access_token && !tokenData.token) {
+            console.error('[VK] Ошибка получения токена:', tokenData);
+            return res.status(401).json({ error: tokenData.error || 'Ошибка авторизации VK' });
+        }
+
+        const accessToken = tokenData.access_token || tokenData.token;
+        const userId = tokenData.user_id || tokenData.sub;
+
+        // Получаем данные пользователя через VK API
+        const userResponse = await fetch('https://api.vk.com/method/users.get', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                access_token: accessToken,
+                v: '5.199',
+                fields: 'photo_100,photo_200,city,country'
+            })
+        });
+
+        const userData = await userResponse.json();
+
+        if (!userData.response || userData.response.length === 0) {
+            return res.status(401).json({ error: 'Не удалось получить данные пользователя VK' });
+        }
+
+        const vkUser = userData.response[0];
+        const firstName = vkUser.first_name || '';
+        const lastName = vkUser.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim() || `user_${userId}`;
+        const photoUrl = vkUser.photo_200 || vkUser.photo_100 || null;
+        const vkId = userId;
+
+        // Ищем или создаём пользователя
+        let result = await pool.query("SELECT * FROM users WHERE vk_id = $1", [vkId]);
+
+        if (result.rows.length === 0) {
+            // Новый пользователь
+            const hashedPassword = await bcrypt.hash(uuidv4(), 10);
+            const newId = uuidv4();
+            const login = `vk_${vkId}`;
+
+            result = await pool.query(
+                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, photo_url, login, vk_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 RETURNING id, name, email, balance, is_admin, is_blocked, photo_url, login`,
+                [newId, sanitizeHTML(fullName), `${vkId}@vk.user`, hashedPassword, 10000, false, false, photoUrl, login, vkId]
+            );
+            console.log(`[VK] Создан новый пользователь: ${fullName}`);
+        } else {
+            // Обновляем имя и фото
+            await pool.query(
+                "UPDATE users SET name = $1, photo_url = $2 WHERE vk_id = $3",
+                [sanitizeHTML(fullName), photoUrl, vkId]
+            );
+            console.log(`[VK] Вход существующего пользователя: ${fullName}`);
+        }
+
+        const user = result.rows[0];
+
+        if (user.is_blocked) {
+            return res.status(403).json({ error: 'Аккаунт заблокирован' });
+        }
+
+        console.log(`[VK] Успешный вход: ${fullName}`);
+        res.json({
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            balance: user.balance,
+            isAdmin: user.is_admin,
+            isBlocked: user.is_blocked,
+            photoUrl: user.photo_url,
+            login: user.login
+        });
+    } catch (error) {
+        console.error('[VK] Ошибка:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
+    }
+});
 
 // ============================================
 // АВТОРИЗАЦИЯ: Логин/пароль
@@ -630,9 +694,9 @@ app.post('/api/auth/register', [
 
         // Создаём пользователя
         await pool.query(
-            `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, telegram_id, photo_url, login)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [newId, sanitizeHTML(name), `${login}@studentmarket.local`, hashedPassword, 10000, false, false, null, null, login.toLowerCase()]
+            `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, photo_url, login)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [newId, sanitizeHTML(name), `${login}@studentmarket.local`, hashedPassword, 10000, false, false, null, login.toLowerCase()]
         );
 
         console.log(`[AUTH] Регистрация успешна: ${login}`);
@@ -706,88 +770,6 @@ app.post('/api/auth/login', [
     } catch (error) {
         console.error('[AUTH] Ошибка входа:', error.message);
         res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// ============================================
-// АВТОРИЗАЦИЯ: Telegram
-// ============================================
-
-app.post('/api/auth/telegram', async (req, res) => {
-    try {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        if (!botToken) {
-            console.error('[TELEGRAM] TELEGRAM_BOT_TOKEN не установлен');
-            return res.status(500).json({ error: 'Telegram auth не настроен' });
-        }
-
-        const telegramData = req.body;
-        console.log(`[TELEGRAM] Попытка входа: id=${telegramData.id}, username=${telegramData.username}`);
-
-        // Проверяем HMAC-подпись
-        if (!verifyTelegramAuth(telegramData, botToken)) {
-            console.log('[TELEGRAM] Неверная подпись');
-            return res.status(401).json({ error: 'Неверная подпись Telegram' });
-        }
-
-        // Проверяем что данные не старше 24 часов
-        const authDate = parseInt(telegramData.auth_date);
-        const now = Math.floor(Date.now() / 1000);
-        if (now - authDate > 86400) {
-            console.log('[TELEGRAM] Данные устарели');
-            return res.status(401).json({ error: 'Данные авторизации устарели' });
-        }
-
-        // Ищем или создаём пользователя
-        const telegramId = telegramData.id;
-        const username = telegramData.username || telegramData.first_name || `user_${telegramId}`;
-        const firstName = telegramData.first_name || '';
-        const lastName = telegramData.last_name || '';
-        const photoUrl = telegramData.photo_url || null;
-        const fullName = `${firstName} ${lastName}`.trim() || username;
-
-        let result = await pool.query("SELECT * FROM users WHERE telegram_id = $1", [telegramId]);
-
-        if (result.rows.length === 0) {
-            // Новый пользователь — создаём
-            const hashedPassword = await bcrypt.hash(uuidv4(), 10); // Случайный пароль
-            const newId = uuidv4();
-            result = await pool.query(
-                `INSERT INTO users (id, name, email, password, balance, is_admin, is_blocked, telegram_id, photo_url)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                 RETURNING id, name, email, balance, is_admin, is_blocked, telegram_id, photo_url`,
-                [newId, sanitizeHTML(fullName), `${telegramId}@telegram.user`, hashedPassword, 10000, false, false, telegramId, photoUrl]
-            );
-            console.log(`[TELEGRAM] Создан новый пользователь: ${fullName}`);
-        } else {
-            // Обновляем имя и фото
-            await pool.query(
-                "UPDATE users SET name = $1, photo_url = $2 WHERE telegram_id = $3",
-                [sanitizeHTML(fullName), photoUrl, telegramId]
-            );
-            console.log(`[TELEGRAM] Вход существующего пользователя: ${fullName}`);
-        }
-
-        const user = result.rows[0];
-        if (user.is_blocked) {
-            console.log(`[TELEGRAM] Заблокирован: ${fullName}`);
-            return res.status(403).json({ error: 'Аккаунт заблокирован' });
-        }
-
-        console.log(`[TELEGRAM] Успешный вход: ${fullName}`);
-        res.json({
-            id: user.id,
-            name: sanitizeHTML(user.name),
-            email: user.email,
-            balance: user.balance,
-            isAdmin: user.is_admin,
-            isBlocked: user.is_blocked,
-            telegramId: user.telegram_id,
-            photoUrl: user.photo_url
-        });
-    } catch (error) {
-        console.error('[TELEGRAM] Ошибка:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
     }
 });
 
@@ -1204,6 +1186,25 @@ app.patch('/api/notifications/:id/read', [param('id').notEmpty().isInt(), valida
 });
 
 // ============================================
+// VK Callback страница
+// ============================================
+
+app.get('/auth/vk/callback', (req, res) => {
+    // Эта страница получает code из URL и отправляет его в opener
+    res.send(`<!DOCTYPE html><html><head><title>VK Auth</title></head><body>
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code && window.opener) {
+        window.opener.postMessage({ type: 'vk_auth_code', code }, window.location.origin);
+        window.close();
+    } else {
+        document.body.innerHTML = '<p>Авторизация завершена. Закройте это окно.</p>';
+    }
+</script></body></html>`);
+});
+
+// ============================================
 // Главная страница
 // ============================================
 
@@ -1221,7 +1222,5 @@ initDatabase().then(() => {
         console.log(`📡 API: http://localhost:${PORT}/api`);
         console.log(`🔒 Trust proxy: включён`);
         console.log(`🌍 ENV: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`📱 TELEGRAM_BOT_USERNAME: ${process.env.TELEGRAM_BOT_USERNAME || 'НЕ УСТАНОВЛЕН'}`);
-        console.log(`📱 TELEGRAM_BOT_TOKEN: ${process.env.TELEGRAM_BOT_TOKEN ? 'установлен (длина: ' + process.env.TELEGRAM_BOT_TOKEN.length + ')' : 'НЕ УСТАНОВЛЕН'}`);
     });
 });
