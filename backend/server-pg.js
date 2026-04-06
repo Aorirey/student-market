@@ -1201,6 +1201,148 @@ app.patch('/api/notifications/:id/read', [param('id').notEmpty().isInt(), valida
 });
 
 // ============================================
+// TELEGRAM БОТ: Подписка на уведомления
+// ============================================
+
+// GET /api/telegram/setup — АВТО-НАСТРОЙКА WEBHOOK
+app.get('/api/telegram/setup', async (req, res) => {
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+        return res.json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not set in .env' });
+    }
+    const serverUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    const webhookUrl = `${serverUrl}/api/telegram/webhook`;
+    const apiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`;
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: webhookUrl })
+        });
+        const data = await response.json();
+        res.json({ message: 'Webhook setup attempted', webhookUrl, telegramResponse: data });
+    } catch (err) {
+        res.json({ ok: false, error: err.message });
+    }
+});
+
+// GET /api/telegram/webhook — проверка (браузер)
+app.get('/api/telegram/webhook', (req, res) => {
+    res.json({ ok: true, message: 'Telegram webhook endpoint is active. This endpoint only accepts POST requests from Telegram.' });
+});
+
+// POST /api/telegram/webhook — webhook от Telegram Bot API
+app.post('/api/telegram/webhook', express.json(), (req, res) => {
+    try {
+        const update = req.body;
+        if (!update.message || !update.message.text) return res.json({ ok: true });
+
+        const chatId = update.message.chat.id;
+        const text = update.message.text.trim();
+        const firstName = update.message.from.first_name || 'Пользователь';
+
+        if (text === '/start' || text.startsWith('/start ')) {
+            const parts = text.split(' ');
+            const userId = parts[1];
+            if (!userId) {
+                return telegram.sendTelegramMessage(chatId,
+                    `👋 Привет, ${firstName}!\n\nДля подписки: /connect ВАШ_USER_ID`);
+            }
+            pool.query("SELECT name FROM users WHERE id = $1", [userId]).then(result => {
+                if (!result.rows.length) {
+                    return telegram.sendTelegramMessage(chatId, `❌ Пользователь "${userId}" не найден`);
+                }
+                const userName = result.rows[0].name;
+                pool.query("INSERT INTO telegram_subscriptions (userId, chatId) VALUES ($1, $2) ON CONFLICT (chatId) DO UPDATE SET userId = $1", [userId, String(chatId)])
+                    .then(() => {
+                        telegram.chatIdCache.set(userId, String(chatId));
+                        telegram.sendTelegramMessage(chatId, `✅ ${userName}, вы подписаны на уведомления!\n\nДля отписки: /unsubscribe`);
+                    });
+            });
+            return res.json({ ok: true });
+        }
+
+        if (text.startsWith('/connect ')) {
+            const userId = text.split(' ')[1];
+            if (!userId) return telegram.sendTelegramMessage(chatId, 'Использование: /connect USER_ID');
+            pool.query("SELECT name FROM users WHERE id = $1", [userId]).then(result => {
+                if (!result.rows.length) return telegram.sendTelegramMessage(chatId, `❌ Пользователь не найден`);
+                const userName = result.rows[0].name;
+                pool.query("INSERT INTO telegram_subscriptions (userId, chatId) VALUES ($1, $2) ON CONFLICT (chatId) DO UPDATE SET userId = $1", [userId, String(chatId)])
+                    .then(() => {
+                        telegram.chatIdCache.set(userId, String(chatId));
+                        telegram.sendTelegramMessage(chatId, `✅ ${userName}, подписка оформлена!`);
+                    });
+            });
+            return res.json({ ok: true });
+        }
+
+        if (text === '/unsubscribe') {
+            pool.query("DELETE FROM telegram_subscriptions WHERE chatId = $1", [String(chatId)]).then(() => {
+                for (const [uid, cid] of telegram.chatIdCache.entries()) {
+                    if (cid === String(chatId)) telegram.chatIdCache.delete(uid);
+                }
+                telegram.sendTelegramMessage(chatId, `👋 Вы отписались. Для подписки: /connect USER_ID`);
+            });
+            return res.json({ ok: true });
+        }
+
+        if (text === '/help') {
+            telegram.sendTelegramMessage(chatId, `📋 Команды:\n/connect USER_ID — подписка\n/unsubscribe — отписка\n/status — статус\n/help — справка`);
+            return res.json({ ok: true });
+        }
+
+        if (text === '/status') {
+            pool.query("SELECT userId FROM telegram_subscriptions WHERE chatId = $1", [String(chatId)]).then(result => {
+                if (result.rows.length) telegram.sendTelegramMessage(chatId, `✅ Подписан (userId: ${result.rows[0].userId})`);
+                else telegram.sendTelegramMessage(chatId, `❌ Не подписан. Используйте /connect USER_ID`);
+            });
+            return res.json({ ok: true });
+        }
+
+        telegram.sendTelegramMessage(chatId, `❓ Неизвестная команда. Используйте /help`);
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('[TELEGRAM] Ошибка webhook:', error.message);
+        res.json({ ok: true });
+    }
+});
+
+// GET /api/telegram/status/:userId
+app.get('/api/telegram/status/:userId', (req, res) => {
+    const chatId = telegram.chatIdCache.get(req.params.userId);
+    res.json({ userId: req.params.userId, subscribed: !!chatId, chatId: chatId || null });
+});
+
+// POST /api/telegram/unsubscribe/:userId
+app.post('/api/telegram/unsubscribe/:userId', (req, res) => {
+    pool.query("DELETE FROM telegram_subscriptions WHERE userId = $1", [req.params.userId]).then(() => {
+        telegram.chatIdCache.delete(req.params.userId);
+        res.json({ message: 'Вы отписаны от Telegram-уведомлений' });
+    });
+});
+
+// POST /api/telegram/test — тестовое сообщение (только админ)
+app.post('/api/telegram/test', async (req, res) => {
+    try {
+        const { chatId, message } = req.body;
+        if (chatId) {
+            const result = await telegram.sendTelegramMessage(chatId, message || '🔔 Тест');
+            res.json({ ok: result.ok, description: result.description });
+        } else {
+            const subs = await pool.query("SELECT chatId FROM telegram_subscriptions");
+            if (!subs.rows.length) return res.json({ ok: true, sent: 0, message: 'Нет подписчиков' });
+            let sent = 0;
+            await Promise.all(subs.rows.map(row =>
+                telegram.sendTelegramMessage(row.chatid, message || '🔔 Тест от админа').then(r => { if (r.ok) sent++; })
+            ));
+            res.json({ ok: true, sent, total: subs.rows.length });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================
 // VK Callback страница
 // ============================================
 
