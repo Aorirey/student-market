@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STUDMARKET — Маркетплейс учебных работ</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════
+         HEADER
+         ═══════════════════════════════════════ -->
+    <header role="banner">
+        <a href="/" class="logo" aria-label="STUDMARKET — На главную">STUDMARKET</a>
+
+        <!-- Гостевые кнопки -->
+        <div class="auth-buttons" id="auth-buttons" role="navigation" aria-label="Авторизация">
+            <button class="btn-login" data-action="open-modal" data-modal="login" aria-label="Войти в аккаунт">Войти</button>
+            <button class="btn-signup" data-action="open-modal" data-modal="register" aria-label="Стать продавцом">Стать продавцом</button>
+        </div>
+
+        <!-- Меню авторизованного пользователя -->
+        <div class="user-menu" id="user-menu" style="display: none;" role="navigation" aria-label="Меню пользователя">
+            <div class="user-info">
+                <span class="user-name" id="user-name" aria-live="polite"></span>
+                <button class="btn-notifications" id="btn-notifications" data-action="toggle-notifications" aria-label="Уведомления" aria-expanded="false" aria-controls="notifications-dropdown">
+                    🔔
+                    <span id="notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; align-items: center; justify-content: center;">0</span>
+                </button>
+                <button class="btn-cabinet" data-action="open-cabinet" aria-label="Личный кабинет">Личный кабинет</button>
+                <button class="btn-admin" id="btn-admin" style="display: none;" data-action="open-admin" aria-label="Админ-панель">Админ</button>
+                <button class="btn-logout" data-action="logout" aria-label="Выйти из аккаунта">Выйти</button>
+            </div>
+        </div>
+
+        <!-- Выпадающий список уведомлений -->
+        <div class="notifications-dropdown" id="notifications-dropdown" style="display: none;" role="dialog" aria-label="Уведомления">
+            <div class="notifications-header">
+                <h3>Уведомления</h3>
+                <button data-action="mark-all-notifications-read" aria-label="Отметить все уведомления прочитанными">Прочитано</button>
+            </div>
+            <div id="notifications-list" aria-live="polite"></div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════
+         НАВИГАЦИЯ — ВКЛАДКИ
+         ═══════════════════════════════════════ -->
+    <nav class="tabs-container" role="navigation" aria-label="Категории работ">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="practices" aria-selected="true" role="tab">Практические работы</button>
+            <button class="tab-btn" data-tab="labs" aria-selected="false" role="tab">Лабораторные работы</button>
+            <button class="tab-btn" data-tab="courses" aria-selected="false" role="tab">Курсовые работы</button>
+            <button class="tab-btn" data-tab="custom" aria-selected="false" role="tab">Ещё</button>
+        </div>
+    </nav>
+
+    <!-- ═══════════════════════════════════════
+         ОСНОВНОЙ КОНТЕНТ (остальные секции пока без изменений по структуре — только стили)
+         ═══════════════════════════════════════ -->
+    <main role="main">
+
+        <!-- Вкладка 1: Практические работы -->
+        <div id="practices" class="tab-content active" role="tabpanel">
+            <div class="filter-section">
+                <label class="filter-label" for="select-practices">Дисциплина:</label>
+                <select id="select-practices" data-filter="practices" aria-label="Фильтр по дисциплине">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Основы программирования">Основы программирования</option>
+                    <option value="Высшая математика">Высшая математика</option>
+                    <option value="Физика">Физика</option>
+                </select>
+            </div>
+            <div class="products-grid" id="grid-practices" aria-live="polite"></div>
+        </div>
+
+        <!-- Вкладка 2: Лабораторные работы -->
+        <div id="labs" class="tab-content" role="tabpanel">
+            <div class="filter-section">
+                <label class="filter-label" for="select-labs">Дисциплина:</label>
+                <select id="select-labs" data-filter="labs" aria-label="Фильтр по дисциплине">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Основы электронной техники">Основы электронной техники</option>
+                    <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
+                    <option value="Микропроцессорная техника">Микропроцессорная техника</option>
+                </select>
+            </div>
+            <div class="products-grid" id="grid-labs" aria-live="polite"></div>
+        </div>
+
+        <!-- Вкладка 3: Курсовые работы -->
+        <div id="courses" class="tab-content" role="tabpanel">
+            <div class="filter-section">
+                <label class="filter-label" for="select-courses">Дисциплина:</label>
+                <select id="select-courses" data-filter="courses" aria-label="Фильтр по дисциплине">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Экономика предприятия">Экономика предприятия</option>
+                    <option value="Менеджмент">Менеджмент</option>
+                    <option value="Разработка ПО">Разработка ПО</option>
+                </select>
+            </div>
+            <div class="products-grid" id="grid-courses" aria-live="polite"></div>
+        </div>
+
+        <!-- Вкладка 4: Индивидуальные запросы -->
+        <div id="custom" class="tab-content" role="tabpanel">
+            <div class="filter-section">
+                <label class="filter-label" for="select-custom">Фильтр:</label>
+                <select id="select-custom" data-filter="custom" aria-label="Фильтр запросов">
+                    <option value="all">Все запросы</option>
+                    <option value="with_file">С файлом</option>
+                    <option value="without_file">Без файла</option>
+                </select>
+            </div>
+            <div class="products-grid" id="grid-custom" aria-live="polite"></div>
+        </div>
+
+        <!-- Личный кабинет пользователя -->
+        <div id="cabinet" class="tab-content" role="tabpanel">
+            <div class="cabinet-header">
+                <h2>Личный кабинет</h2>
+                <div class="cabinet-tabs" role="tablist" aria-label="Разделы кабинета">
+                    <button class="cabinet-tab active" data-cabinet-tab="buyer" role="tab" aria-selected="true">Покупатель</button>
+                    <button class="cabinet-tab" data-cabinet-tab="sales" role="tab" aria-selected="false">Мои продажи</button>
+                    <button class="cabinet-tab" data-cabinet-tab="products" role="tab" aria-selected="false">Мои товары</button>
+                    <button class="cabinet-tab" data-cabinet-tab="chats" role="tab" aria-selected="false">Чаты</button>
+                    <button class="cabinet-tab" data-cabinet-tab="add" role="tab" aria-selected="false">Добавить товар</button>
+                </div>
+            </div>
+
+            <!-- Вкладка покупателя -->
+            <div id="cabinet-buyer" class="cabinet-section active" role="tabpanel">
+                <div class="cabinet-info">
+                    <h3>Мои покупки</h3>
+                    <div class="purchases-list" id="purchases-list" aria-live="polite"></div>
+                </div>
+                <div class="cabinet-info">
+                    <h3>Баланс: <span id="user-balance">10000</span> ₽</h3>
+                    <h3>Рейтинг: <span id="user-rating">Нет отзывов</span></h3>
+                </div>
+            </div>
+
+            <!-- Вкладка мои продажи -->
+            <div id="cabinet-sales" class="cabinet-section" role="tabpanel">
+                <div class="cabinet-info">
+                    <h3>Мои продажи</h3>
+                    <div class="sales-list" id="seller-sales-list" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <!-- Вкладка мои товары -->
+            <div id="cabinet-products" class="cabinet-section" role="tabpanel">
+                <div class="cabinet-info">
+                    <h3>Мои товары</h3>
+                    <div class="products-list" id="seller-products-list" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <!-- Вкладка чаты -->
+            <div id="cabinet-chats" class="cabinet-section" role="tabpanel">
+                <div class="chats-container">
+                    <div class="chat-list" id="chat-list">
+                        <h3>Мои чаты</h3>
+                        <div id="chats-list-content" aria-live="polite"></div>
+                    </div>
+                    <div class="chat-window" id="chat-window" style="display: none;">
+                        <div class="chat-header">
+                            <button class="btn-back-chat" data-action="close-chat-window" aria-label="Закрыть чат">← Назад</button>
+                            <span id="chat-with-name"></span>
+                        </div>
+                        <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+                        <div class="chat-input-area">
+                            <input type="file" id="chat-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="display: none;" data-action="chat-file-input">
+                            <button class="btn-attach-file" data-action="trigger-chat-file" aria-label="Прикрепить файл">📎</button>
+                            <input type="text" id="chat-message-input" placeholder="Введите сообщение..." data-action="chat-input" aria-label="Сообщение">
+                            <button class="btn-send-message" data-action="send-message" aria-label="Отправить">➤</button>
+                        </div>
+                        <div id="attached-file-preview" class="attached-file-preview" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Вкладка добавить товар/запрос -->
+            <div id="cabinet-add" class="cabinet-section" role="tabpanel">
+                <div class="cabinet-info">
+                    <h3>Добавить товар или индивидуальный запрос</h3>
+                    <form class="add-product-form" id="add-product-form" novalidate>
+                        <select id="product-type" data-toggle-product-type aria-label="Тип публикации" required>
+                            <option value="product">Готовый товар</option>
+                            <option value="custom">Индивидуальный запрос</option>
+                        </select>
+
+                        <!-- Поля для готового товара -->
+                        <div id="product-fields">
+                            <input type="text" id="product-title" placeholder="Название работы" required aria-label="Название работы">
+                            <select id="product-category" aria-label="Категория">
+                                <option value="practices">Практические работы</option>
+                                <option value="labs">Лабораторные работы</option>
+                                <option value="courses">Курсовые работы</option>
+                            </select>
+                            <select id="product-discipline" aria-label="Дисциплина">
+                                <option value="Основы программирования">Основы программирования</option>
+                                <option value="Высшая математика">Высшая математика</option>
+                                <option value="Физика">Физика</option>
+                                <option value="Основы электронной техники">Основы электронной техники</option>
+                                <option value="Экономика предприятия">Экономика предприятия</option>
+                                <option value="Менеджмент">Менеджмент</option>
+                                <option value="Разработка ПО">Разработка ПО</option>
+                            </select>
+                            <input type="number" id="product-price" placeholder="Цена (₽)" required aria-label="Цена">
+                            <label for="product-deadline">Срок сдачи работы:</label>
+                            <select id="product-deadline">
+                                <option value="1">1 день</option>
+                                <option value="3">3 дня</option>
+                                <option value="7">7 дней</option>
+                                <option value="14">14 дней</option>
+                                <option value="30">30 дней</option>
+                            </select>
+                        </div>
+
+                        <!-- Поля для индивидуального запроса -->
+                        <div id="custom-fields" style="display: none;">
+                            <input type="text" id="custom-title" placeholder="Название запроса (например: Курсовая на тему...)" aria-label="Название запроса">
+                            <textarea id="custom-description" rows="4" placeholder="Опишите ваши требования к работе..." aria-label="Описание запроса"></textarea>
+                            <input type="number" id="custom-budget" placeholder="Ваш бюджет (₽)" aria-label="Бюджет">
+                            <label for="custom-file">Прикрепить файл (методичку, пример):</label>
+                            <input type="file" id="custom-file" aria-label="Файл">
+                        </div>
+
+                        <button type="submit" class="btn-add-product" id="btn-submit-product">Добавить товар</button>
+                    </form>
+                    <p class="form-hint">⏳ Товар будет отправлен на модерацию администратору</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница продавца -->
+        <div id="seller-page" class="tab-content" role="tabpanel">
+            <div class="seller-page-header">
+                <button class="btn-back" data-action="back-from-seller" aria-label="Назад к списку">← Назад</button>
+                <h2 id="seller-page-name">Продавец</h2>
+                <p id="seller-page-rating" class="seller-rating">Рейтинг: --</p>
+            </div>
+            <div class="seller-page-content">
+                <div class="seller-section">
+                    <h3>📦 Товары продавца</h3>
+                    <div class="products-grid" id="seller-products-grid" aria-live="polite"></div>
+                </div>
+                <div class="seller-section">
+                    <h3>⭐ Отзывы о продавце</h3>
+                    <div class="reviews-list" id="seller-reviews-list" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Админ-панель -->
+        <div id="admin-panel" class="tab-content" role="tabpanel">
+            <div class="admin-header">
+                <h2>🛡️ Панель администратора</h2>
+                <div class="admin-tabs" role="tablist" aria-label="Разделы админ-панели">
+                    <button class="admin-tab active" data-admin-tab="moderation" role="tab" aria-selected="true">Модерация товаров</button>
+                    <button class="admin-tab" data-admin-tab="custom" role="tab" aria-selected="false">Индивид. запросы</button>
+                    <button class="admin-tab" data-admin-tab="users" role="tab" aria-selected="false">Пользователи</button>
+                </div>
+            </div>
+
+            <!-- Модерация товаров -->
+            <div id="admin-moderation" class="admin-section active" role="tabpanel">
+                <div class="admin-info">
+                    <h3>📋 Товары на проверке</h3>
+                    <div class="pending-products-list" id="pending-products-list" aria-live="polite"></div>
+                </div>
+                <div class="admin-info">
+                    <h3>✅ Опубликованные товары</h3>
+                    <div class="approved-products-list" id="approved-products-list" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <!-- Модерация индивидуальных запросов -->
+            <div id="admin-custom" class="admin-section" role="tabpanel">
+                <div class="admin-info">
+                    <h3>📋 Запросы на проверке</h3>
+                    <div class="pending-requests-list" id="pending-requests-list" aria-live="polite"></div>
+                </div>
+                <div class="admin-info">
+                    <h3>✅ Опубликованные запросы</h3>
+                    <div class="approved-requests-list" id="approved-requests-list" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <!-- Управление пользователями -->
+            <div id="admin-users" class="admin-section" role="tabpanel">
+                <div class="admin-info">
+                    <h3>👥 Все пользователи</h3>
+                    <div class="users-list" id="users-list" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Универсальное уведомление -->
+    <div class="toast-container" id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+    <!-- Модальное окно авторизации -->
+    <div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-label="Авторизация">
+        <div class="modal-content">
+            <button class="modal-close" data-action="close-modal" aria-label="Закрыть">&times;</button>
+
+            <div id="email-auth" class="auth-form">
+                <h2>Вход в аккаунт</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1.25rem; text-align: center; font-size: var(--fs-sm);">Войдите или создайте новый аккаунт</p>
+
+                <!-- Переключатель вход/регистрация -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
+                    <button id="login-btn" class="auth-switch-btn active">Вход</button>
+                    <button id="register-btn" class="auth-switch-btn">Регистрация</button>
+                </div>
+
+                <!-- Форма входа -->
+                <form id="login-form" novalidate>
+                    <div id="login-error-message" class="form-error-message" style="display: none;" role="alert"></div>
+                    <div class="form-group">
+                        <input type="text" id="login-login" placeholder="Логин" required aria-label="Логин">
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="login-password" placeholder="Пароль" required aria-label="Пароль">
+                    </div>
+                    <button type="submit" class="btn-signup" style="width: 100%; margin-bottom: 0.75rem;">Войти</button>
+                    <div style="text-align: center; margin: 1rem 0; color: var(--text-muted); font-size: var(--fs-sm);">или</div>
+                    <div id="vk-login-container"></div>
+                </form>
+
+                <!-- Форма регистрации (скрыта) -->
+                <form id="register-form" style="display: none;" novalidate>
+                    <div class="form-group">
+                        <input type="text" id="register-name" placeholder="Ник (отображаемое имя)" required aria-label="Имя">
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="register-login" placeholder="Логин (латиница, цифры)" required pattern="[a-zA-Z0-9_]+" title="Только латинские буквы, цифры и _" aria-label="Логин">
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="register-password" placeholder="Пароль (мин. 6 символов)" required minlength="6" aria-label="Пароль">
+                    </div>
+                    <button type="submit" class="btn-signup" style="width: 100%; margin-bottom: 0.75rem;">Зарегистрироваться</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно загрузки файла -->
+    <div class="modal" id="upload-modal" role="dialog" aria-modal="true" aria-label="Загрузка файла">
+        <div class="modal-content">
+            <button class="modal-close" data-action="close-upload-modal" aria-label="Закрыть">&times;</button>
+            <h2 style="font-size: var(--fs-lg); margin-bottom: 1rem;">📤 Загрузка работы</h2>
+            <input type="hidden" id="upload-purchase-id">
+            <input type="hidden" id="upload-seller-id">
+            <input type="hidden" id="upload-buyer-id">
+            <div style="margin: 1.25rem 0;">
+                <label for="upload-file" style="display: block; margin-bottom: 0.5rem; font-size: var(--fs-sm);">Выберите файл:</label>
+                <input type="file" id="upload-file" style="width: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-main);">
+            </div>
+            <button class="btn-signup" data-action="upload-work-file" style="width: 100%; margin-bottom: 0.5rem;">Загрузить файл</button>
+            <button class="btn-contact-seller" data-action="contact-seller-from-modal" style="width: 100%;">📝 Написать покупателю</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно отзыва -->
+    <div class="modal" id="review-modal" role="dialog" aria-modal="true" aria-label="Отзыв о покупке">
+        <div class="modal-content">
+            <button class="modal-close" data-action="close-review-modal" aria-label="Закрыть">&times;</button>
+            <h2 style="font-size: var(--fs-lg); margin-bottom: 1rem;">✎ Отзыв о покупке</h2>
+            <input type="hidden" id="review-purchase-id">
+            <input type="hidden" id="review-seller-id">
+            <p style="margin-bottom: 1rem; font-size: var(--fs-sm);">Товар: <strong id="review-product-title"></strong></p>
+            <div style="margin: 1rem 0;">
+                <label for="review-rating" style="display: block; margin-bottom: 0.5rem; font-size: var(--fs-sm);">Оценка:</label>
+                <select id="review-rating" style="width: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-main);">
+                    <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                    <option value="4">⭐⭐⭐⭐ (4)</option>
+                    <option value="3">⭐⭐⭐ (3)</option>
+                    <option value="2">⭐⭐ (2)</option>
+                    <option value="1">⭐ (1)</option>
+                </select>
+            </div>
+            <div style="margin: 1rem 0;">
+                <label for="review-comment" style="display: block; margin-bottom: 0.5rem; font-size: var(--fs-sm);">Комментарий:</label>
+                <textarea id="review-comment" rows="4" style="width: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-main); resize: vertical;" placeholder="Напишите ваш отзыв..."></textarea>
+            </div>
+            <button class="btn-signup" data-action="submit-review" style="width: 100%;">Отправить отзыв</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно подтверждения покупки -->
+    <div class="modal" id="confirm-purchase-modal" role="dialog" aria-modal="true" aria-label="Подтверждение покупки">
+        <div class="modal-content">
+            <button class="modal-close" data-action="close-purchase-confirm-modal" aria-label="Закрыть">&times;</button>
+            <h2 style="font-size: var(--fs-lg); margin-bottom: 1rem;">✓ Подтверждение покупки</h2>
+            <p style="margin: 1rem 0; font-size: var(--fs-sm);">Вы собираетесь купить работу:</p>
+            <p style="font-weight: 700; font-size: var(--fs-md);" id="confirm-product-title"></p>
+            <p style="margin: 0.5rem 0; font-size: var(--fs-sm);">Цена: <strong style="color: var(--primary);" id="confirm-product-price"></strong> ₽</p>
+            <p style="margin: 0.5rem 0; font-size: var(--fs-sm);">Ваш баланс: <strong id="confirm-user-balance"></strong> ₽</p>
+            <p style="margin: 0.5rem 0; font-size: var(--fs-sm);">Остаток после покупки: <strong id="confirm-balance-after"></strong> ₽</p>
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+                <button class="btn-signup" data-action="confirm-purchase" style="flex: 1;">Подтвердить</button>
+                <button class="btn-reject" data-action="close-purchase-confirm-modal" style="flex: 1;">Отмена</button>
+            </div>
+            <button class="btn-contact-seller" data-action="contact-seller-from-confirm" style="width: 100%; margin-top: 1rem;">💬 Написать продавцу</button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         FOOTER
+         ═══════════════════════════════════════ -->
+    <footer role="contentinfo">
+        <p>&copy; 2026 StudentMarket. Все права защищены.</p>
+    </footer>
+
+    <script src="/js/script.js"></script>
+
+    <!-- VK ID OneTap виджет -->
+    <div id="vk-login-container-inline" style="display:none;"></div>
+    <script src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js" defer></script>
+    <script>
+        window.initVKID = function() {
+            if (!window.VKIDSDK) {
+                console.log('[VKID] SDK не загрузился');
+                return;
+            }
+            const VKID = window.VKIDSDK;
+            VKID.Config.init({
+                app: 54526642,
+                redirectUrl: window.location.origin + '/auth/vk/callback',
+                responseMode: VKID.ConfigResponseMode.Callback,
+                source: VKID.ConfigSource.LOWCODE,
+                scope: '',
+            });
+
+            const oneTap = new VKID.OneTap();
+            const container = document.getElementById('vk-login-container-inline');
+            if (!container) return;
+
+            oneTap.render({
+                container: container,
+                showAlternativeLogin: false,
+            }).catch(function(error) {
+                console.log('[VKID] Ошибка рендера:', error);
+            });
+        };
+    </script>
+
+</body>
+</html>

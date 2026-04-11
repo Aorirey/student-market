@@ -101,12 +101,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // СТАТИКА: Раздача CSS, JS, изображений
 // ============================================
 const ROOT = path.join(__dirname, '..');
-app.use('/css', express.static(path.join(ROOT, 'css')));
-app.use('/js', express.static(path.join(ROOT, 'js')));
+const FRONTEND = path.join(ROOT, 'frontend');
+app.use('/css', express.static(path.join(FRONTEND, 'css')));
+app.use('/js', express.static(path.join(FRONTEND, 'js')));
 
 // Главная страница
 app.get('/', (req, res) => {
-    let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    let html = fs.readFileSync(path.join(FRONTEND, 'index.html'), 'utf8');
     html = html.replace('<!-- TELEGRAM_WIDGET_INJECT -->', '');
     res.send(html);
 });
