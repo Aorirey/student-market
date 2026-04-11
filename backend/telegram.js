@@ -19,6 +19,7 @@ let chatIdCache = new Map();
  */
 async function execDb(db, sql, params = []) {
     try {
+        if (!db) return { values: [] };
         if (db.query) {
             // PostgreSQL
             const res = await db.query(sql, params);
@@ -41,6 +42,7 @@ async function execDb(db, sql, params = []) {
  */
 async function initTelegramTable(db) {
     try {
+        if (!db) return;
         const sql = `CREATE TABLE IF NOT EXISTS telegram_subscriptions (
             userId TEXT NOT NULL,
             chatId TEXT NOT NULL UNIQUE,
@@ -61,6 +63,7 @@ async function initTelegramTable(db) {
  */
 async function loadChatIdCache(db) {
     try {
+        if (!db) { console.log('[TELEGRAM] DB не передан, кэш не загружен'); return; }
         const result = await execDb(db, "SELECT userId, chatId FROM telegram_subscriptions");
         result.values.forEach(row => {
             chatIdCache.set(row[0], row[1]);
