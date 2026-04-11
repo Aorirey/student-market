@@ -144,9 +144,9 @@ function sanitizeHTML(str) {
 }
 
 // Helper: автоматическое создание уведомлений + Telegram
-function createNotification(userId, title, message, type, db) {
+async function createNotification(userId, title, message, type, db) {
     try {
-        db.query("INSERT INTO notifications (userId, title, message, type) VALUES ($1, $2, $3, $4)",
+        await db.query("INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4)",
             [userId, title, message, type]);
 
         // Отправляем Telegram-уведомление
@@ -930,12 +930,19 @@ app.post('/api/purchases', purchaseCreateValidator, async (req, res) => {
             [productId, sanitizeHTML(title), price, sanitizeHTML(buyerId), sanitizeHTML(sellerId), deadline || null]
         );
 
-        // Уведомление продавца о покупке
-        try {
-            createNotification(sellerId, '💰 Новая покупка', `Ваш товар "${sanitizeHTML(title)}" куплен за ${price} ₽`, 'purchase', pool);
-        } catch (err) {
-            console.error('[NOTIFICATION] Ошибка уведомления о покупке:', err.message);
-        }
+        // Уведомление продавца о покупке (не-blocking)
+        setImmediate(async () => {
+            try {
+                if (pool) {
+                    await pool.query(
+                        "INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4)",
+                        [sellerId, '💰 Новая покупка', `Ваш товар "${sanitizeHTML(title)}" куплен за ${price} ₽`, 'purchase']
+                    );
+                }
+            } catch (err) {
+                console.error('[NOTIFICATION] Ошибка уведомления о покупке:', err.message);
+            }
+        });
 
         console.log(`[PURCHASE] Создана покупка: ${result.rows[0].id}`);
         res.status(201).json({ id: result.rows[0].id, productId, title: sanitizeHTML(title), price, buyerId: sanitizeHTML(buyerId), sellerId: sanitizeHTML(sellerId), deadline });
@@ -1165,7 +1172,7 @@ app.get('/api/chat/purchases/:userId', userIdValidator, async (req, res) => {
 // API: Уведомления
 // ============================================
 
-app.get('/api/notifications/:userId', userIdValidator, async (req, res) => {
+app.get('/api/notifications/:userId', [param('userId').trim().notEmpty().withMessage('userId обязателен'), validate], async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC", [req.params.userId]);
         res.json(result.rows.map(row => ({ 

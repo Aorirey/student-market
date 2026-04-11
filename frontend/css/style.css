@@ -110,35 +110,21 @@ body {
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
-    /* Диагональные лучи света как на референсе */
+    /* Тёмный фиолетовый градиент + диагональные лучи */
     background:
-        /* Основной диагональный луч */
-        linear-gradient(
-            135deg,
-            transparent 0%,
-            transparent 35%,
-            rgba(120, 80, 220, 0.08) 45%,
-            rgba(140, 100, 240, 0.05) 50%,
-            transparent 55%,
+        linear-gradient(135deg,
+            rgba(100, 60, 180, 0.15) 0%,
+            transparent 30%,
+            transparent 50%,
+            rgba(120, 70, 200, 0.1) 70%,
             transparent 100%
         ),
-        /* Второй луч снизу */
-        linear-gradient(
-            315deg,
-            transparent 0%,
-            transparent 55%,
-            rgba(100, 60, 200, 0.06) 65%,
-            rgba(120, 80, 220, 0.04) 70%,
-            transparent 75%,
-            transparent 100%
-        );
-    animation: beamsPulse 15s ease-in-out infinite alternate;
-}
-
-@keyframes beamsPulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.8; }
+        linear-gradient(200deg,
+            transparent 40%,
+            rgba(140, 80, 220, 0.08) 50%,
+            transparent 60%
+        ),
+        #0d0b1a;
 }
 
 /* Базовая фигура */
@@ -148,63 +134,98 @@ body {
     top: var(--y);
     width: var(--size);
     height: var(--size);
-    opacity: 0.35;
-    animation: float var(--dur) ease-in-out infinite alternate;
-    animation-delay: var(--delay);
+    opacity: 0;
+    animation: geoAppear 1.5s ease forwards, geoFloat var(--dur) ease-in-out infinite alternate;
+    animation-delay: var(--delay), calc(var(--delay) + 1.5s);
 }
 
-@keyframes float {
+@keyframes geoAppear {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 0.4; transform: scale(1); }
+}
+
+@keyframes geoFloat {
     0% {
         transform: translate(0, 0) rotate(0deg);
     }
-    33% {
-        transform: translate(15px, -20px) rotate(8deg);
+    25% {
+        transform: translate(12px, -18px) rotate(5deg);
     }
-    66% {
-        transform: translate(-10px, 15px) rotate(-5deg);
+    50% {
+        transform: translate(-8px, 12px) rotate(-3deg);
+    }
+    75% {
+        transform: translate(6px, -8px) rotate(2deg);
     }
     100% {
-        transform: translate(8px, -12px) rotate(3deg);
+        transform: translate(-4px, 10px) rotate(-2deg);
     }
 }
 
-/* Куб (изометрия через градиент) */
-.geo-shape.cube {
-    background: linear-gradient(135deg, rgba(140, 120, 255, 0.12) 0%, rgba(100, 80, 200, 0.06) 100%);
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+/* === Куб 3D (изометрический) === */
+.geo-shape.cube-3d {
+    background: linear-gradient(135deg,
+        rgba(140, 110, 255, 0.2) 0%,
+        rgba(100, 70, 200, 0.1) 40%,
+        rgba(80, 50, 160, 0.15) 100%
+    );
+    clip-path: polygon(
+        50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
+    );
+    transform: rotate(var(--rotate, 0deg));
+    filter: drop-shadow(0 0 15px rgba(140, 110, 255, 0.15));
 }
 
-/* Конус */
-.geo-shape.cone {
-    background: linear-gradient(180deg, rgba(140, 120, 255, 0.1) 0%, rgba(100, 80, 200, 0.04) 100%);
+/* === Пирамида === */
+.geo-shape.pyramid {
+    background: linear-gradient(180deg,
+        rgba(150, 120, 255, 0.18) 0%,
+        rgba(100, 70, 200, 0.08) 100%
+    );
     clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    filter: drop-shadow(0 0 12px rgba(140, 110, 255, 0.12));
 }
 
-/* Цилиндр */
-.geo-shape.cylinder {
-    background: linear-gradient(180deg, rgba(168, 140, 255, 0.1) 0%, rgba(120, 100, 220, 0.05) 100%);
+/* === Цилиндр 3D === */
+.geo-shape.cylinder-3d {
+    background: linear-gradient(180deg,
+        rgba(160, 130, 255, 0.15) 0%,
+        rgba(120, 90, 220, 0.08) 40%,
+        rgba(100, 70, 180, 0.12) 100%
+    );
+    border-radius: 50%;
+    filter: drop-shadow(0 0 12px rgba(140, 110, 255, 0.1));
+}
+
+/* === Конус 3D === */
+.geo-shape.cone-3d {
+    background: linear-gradient(180deg,
+        rgba(140, 110, 255, 0.16) 0%,
+        rgba(100, 70, 200, 0.06) 100%
+    );
+    clip-path: polygon(50% 0%, 95% 100%, 5% 100%);
+    filter: drop-shadow(0 0 10px rgba(140, 110, 255, 0.1));
+}
+
+/* === Кольцо === */
+.geo-shape.ring {
+    background: transparent;
+    border: 1.5px solid rgba(160, 130, 255, 0.15);
     border-radius: 50%;
 }
 
-/* Треугольник (outline) */
-.geo-shape.triangle {
+/* === Треугольник outline === */
+.geo-shape.triangle-outline {
     background: transparent;
-    border: 1px solid rgba(168, 140, 255, 0.12);
+    border: 1.5px solid rgba(160, 130, 255, 0.12);
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
-/* Кольцо */
-.geo-shape.ring {
-    background: transparent;
-    border: 1.5px solid rgba(168, 140, 255, 0.1);
-    border-radius: 50%;
-}
-
-/* Точечная сетка */
-.geo-shape.dots {
-    background: radial-gradient(circle, rgba(168, 140, 255, 0.1) 1px, transparent 1px);
-    background-size: 8px 8px;
-    border-radius: 4px;
+/* === Точечная сетка === */
+.geo-shape.dot-grid {
+    background-image: radial-gradient(circle, rgba(160, 130, 255, 0.12) 1.5px, transparent 1.5px);
+    background-size: 10px 10px;
+    border-radius: 2px;
 }
 
 /* === Ссылки и фокус (a11y) === */
