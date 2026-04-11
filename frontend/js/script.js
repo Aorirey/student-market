@@ -116,32 +116,35 @@ async function checkAuth() {
 
 // Регистрация
 async function register() {
-    const name = document.getElementById('register-name').value;
-    const email = document.getElementById('register-email').value;
+    const name = document.getElementById('register-name').value.trim();
+    const loginValue = document.getElementById('register-login').value.trim();
     const password = document.getElementById('register-password').value;
 
-    console.log('[REGISTER] Попытка регистрации:', { name, email, passwordLen: password ? password.length : 0 });
+    console.log('[REGISTER] Попытка регистрации:', { name, login: loginValue, passwordLen: password ? password.length : 0 });
 
-    if (!name || !email || !password) {
+    if (!name || !loginValue || !password) {
         showToast('Ошибка', 'Заполните все поля!', 'error');
         return;
     }
 
-    // Проверка email на валидность
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        showToast('Ошибка', 'Введите корректный email адрес', 'error');
+    // Проверка логина
+    const loginRegex = /^[a-zA-Z0-9_]{3,20}$/;
+    if (!loginRegex.test(loginValue)) {
+        showToast('Ошибка', 'Логин: только латинские буквы, цифры и _ (3-20 символов)', 'error');
+        return;
+    }
+
+    // Проверка пароля
+    if (password.length < 6) {
+        showToast('Ошибка', 'Пароль должен быть не менее 6 символов', 'error');
         return;
     }
 
     try {
-        const body = JSON.stringify({ name, email, password });
-        console.log('[REGISTER] Отправка тела:', body);
-
-        const response = await fetch(`${API_URL}/users/register`, {
+        const response = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: body
+            body: JSON.stringify({ name, login: loginValue, password })
         });
 
         console.log('[REGISTER] Ответ сервера:', response.status);
@@ -160,7 +163,7 @@ async function register() {
 
         // Очистка формы
         document.getElementById('register-name').value = '';
-        document.getElementById('register-email').value = '';
+        document.getElementById('register-login').value = '';
         document.getElementById('register-password').value = '';
 
         closeModal();
@@ -174,21 +177,28 @@ async function register() {
 
 // Вход
 async function login() {
-    const email = document.getElementById('login-email').value;
+    const loginValue = document.getElementById('login-login').value.trim();
     const password = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error-message');
 
-    if (!email || !password) {
-        showToast('Ошибка', 'Заполните все поля!', 'error');
+    // Сбрасываем ошибку
+    if (errorEl) {
+        errorEl.style.display = 'none';
+        errorEl.textContent = '';
+    }
+
+    if (!loginValue || !password) {
+        showAuthError(errorEl, 'Заполните все поля!');
         return;
     }
 
-    console.log('[LOGIN] Попытка входа:', email, 'API_URL:', API_URL);
+    console.log('[LOGIN] Попытка входа:', loginValue, 'API_URL:', API_URL);
 
     try {
-        const response = await fetch(`${API_URL}/users/login`, {
+        const response = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ login: loginValue, password })
         });
 
         console.log('[LOGIN] Ответ сервера:', response.status);
@@ -197,19 +207,32 @@ async function login() {
         console.log('[LOGIN] Данные ответа:', data);
 
         if (!response.ok) {
-            showToast('Ошибка', data.error || 'Неверный email или пароль', 'error');
+            showAuthError(errorEl, data.error || 'Неверный логин или пароль');
             return;
         }
 
         currentUser = data;
         sessionStorage.setItem('currentUser', JSON.stringify(data));
 
+        // Очистка формы
+        document.getElementById('login-login').value = '';
+        document.getElementById('login-password').value = '';
+        if (errorEl) { errorEl.style.display = 'none'; }
+
         closeModal();
         checkAuth();
-        showToast('Успешно', 'Вход успешен!', 'success');
+        showToast('Успешно', 'Добро пожаловать, ' + data.name + '!', 'success');
     } catch (error) {
-        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+        showAuthError(errorEl, 'Ошибка подключения к серверу');
         console.error('[LOGIN] Ошибка:', error);
+    }
+}
+
+// Показать ошибку в модалке авторизации
+function showAuthError(errorEl, message) {
+    if (errorEl) {
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
     }
 }
 

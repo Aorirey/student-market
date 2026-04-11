@@ -1667,6 +1667,51 @@ footer {
     font-weight: 600;
 }
 
+/* Убираем spinner у number input */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+/* Кнопка «Подтвердить» в модалке покупки — как на концепте */
+#confirm-purchase-modal .btn-signup {
+    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    color: #fff;
+    font-size: var(--fs-md);
+    font-weight: 700;
+    padding: 0.9rem 2rem;
+    border-radius: var(--radius-md);
+    letter-spacing: 0.02em;
+    box-shadow: 0 4px 24px rgba(168, 85, 247, 0.4);
+    border: none;
+    transition: all var(--transition-fast);
+}
+
+#confirm-purchase-modal .btn-signup:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.5);
+}
+
+#confirm-purchase-modal .btn-reject {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--danger);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    padding: 0.9rem 2rem;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+    transition: all var(--transition-fast);
+}
+
+#confirm-purchase-modal .btn-reject:hover {
+    background: rgba(248, 113, 113, 0.2);
+}
+
 /* ============================================
    ДОПОЛНИТЕЛЬНЫЕ КНОПКИ (покупки/продажи)
    ============================================ */

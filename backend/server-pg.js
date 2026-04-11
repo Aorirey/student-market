@@ -925,15 +925,23 @@ app.post('/api/purchases', purchaseCreateValidator, async (req, res) => {
     try {
         const { productId, title, price, buyerId, sellerId, deadline } = req.body;
         const result = await pool.query(
-            `INSERT INTO purchases (product_id, title, price, buyer_id, seller_id, deadline) 
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, 
+            `INSERT INTO purchases (product_id, title, price, buyer_id, seller_id, deadline)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
             [productId, sanitizeHTML(title), price, sanitizeHTML(buyerId), sanitizeHTML(sellerId), deadline || null]
         );
+
+        // Уведомление продавца о покупке
+        try {
+            createNotification(sellerId, '💰 Новая покупка', `Ваш товар "${sanitizeHTML(title)}" куплен за ${price} ₽`, 'purchase', pool);
+        } catch (err) {
+            console.error('[NOTIFICATION] Ошибка уведомления о покупке:', err.message);
+        }
+
         console.log(`[PURCHASE] Создана покупка: ${result.rows[0].id}`);
         res.status(201).json({ id: result.rows[0].id, productId, title: sanitizeHTML(title), price, buyerId: sanitizeHTML(buyerId), sellerId: sanitizeHTML(sellerId), deadline });
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка покупки:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
