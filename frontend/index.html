@@ -208,7 +208,7 @@
                                 <option value="Менеджмент">Менеджмент</option>
                                 <option value="Разработка ПО">Разработка ПО</option>
                             </select>
-                            <input type="number" id="product-price" placeholder="Цена (₽)" required aria-label="Цена">
+                            <input type="number" id="product-price" placeholder="Цена (₽)" required min="1" aria-label="Цена">
                             <label for="product-deadline">Срок сдачи работы:</label>
                             <select id="product-deadline">
                                 <option value="1">1 день</option>
@@ -223,7 +223,7 @@
                         <div id="custom-fields" style="display: none;">
                             <input type="text" id="custom-title" placeholder="Название запроса (например: Курсовая на тему...)" aria-label="Название запроса">
                             <textarea id="custom-description" rows="4" placeholder="Опишите ваши требования к работе..." aria-label="Описание запроса"></textarea>
-                            <input type="number" id="custom-budget" placeholder="Ваш бюджет (₽)" aria-label="Бюджет">
+                            <input type="number" id="custom-budget" placeholder="Ваш бюджет (₽)" min="1" aria-label="Бюджет">
                             <label for="custom-file">Прикрепить файл (методичку, пример):</label>
                             <input type="file" id="custom-file" aria-label="Файл">
                         </div>
