@@ -119,24 +119,26 @@ async function register() {
     const name = document.getElementById('register-name').value.trim();
     const loginValue = document.getElementById('register-login').value.trim();
     const password = document.getElementById('register-password').value;
+    const errorEl = document.getElementById('register-error-message');
 
-    console.log('[REGISTER] Попытка регистрации:', { name, login: loginValue, passwordLen: password ? password.length : 0 });
+    // Сбрасываем ошибку
+    if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
 
     if (!name || !loginValue || !password) {
-        showToast('Ошибка', 'Заполните все поля!', 'error');
+        showAuthError(errorEl, 'Заполните все поля!');
         return;
     }
 
     // Проверка логина
     const loginRegex = /^[a-zA-Z0-9_]{3,20}$/;
     if (!loginRegex.test(loginValue)) {
-        showToast('Ошибка', 'Логин: только латинские буквы, цифры и _ (3-20 символов)', 'error');
+        showAuthError(errorEl, 'Логин: только латинские буквы, цифры и _ (3-20 символов)');
         return;
     }
 
     // Проверка пароля
     if (password.length < 6) {
-        showToast('Ошибка', 'Пароль должен быть не менее 6 символов', 'error');
+        showAuthError(errorEl, 'Пароль должен быть не менее 6 символов');
         return;
     }
 
@@ -147,13 +149,10 @@ async function register() {
             body: JSON.stringify({ name, login: loginValue, password })
         });
 
-        console.log('[REGISTER] Ответ сервера:', response.status);
-
         const data = await response.json();
-        console.log('[REGISTER] Данные ответа:', data);
 
         if (!response.ok) {
-            showToast('Ошибка', data.error || 'Ошибка регистрации', 'error');
+            showAuthError(errorEl, data.error || 'Ошибка регистрации');
             return;
         }
 
@@ -165,12 +164,13 @@ async function register() {
         document.getElementById('register-name').value = '';
         document.getElementById('register-login').value = '';
         document.getElementById('register-password').value = '';
+        if (errorEl) { errorEl.style.display = 'none'; }
 
         closeModal();
         checkAuth();
-        showToast('Успешно', 'Регистрация успешна!', 'success');
+        showToast('Успешно', 'Добро пожаловать, ' + data.name + '!', 'success');
     } catch (error) {
-        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+        showAuthError(errorEl, 'Ошибка подключения к серверу');
         console.error('[REGISTER] Ошибка:', error);
     }
 }

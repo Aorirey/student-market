@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+    <!-- Анимированное фоновое свечение -->
+    <div class="bg-glow-center" aria-hidden="true"></div>
 
     <!-- ═══════════════════════════════════════
          HEADER
@@ -333,6 +335,7 @@
 
                 <!-- Форма регистрации (скрыта) -->
                 <form id="register-form" style="display: none;" novalidate>
+                    <div id="register-error-message" class="form-error-message" style="display: none;" role="alert"></div>
                     <div class="form-group">
                         <input type="text" id="register-name" placeholder="Ник (отображаемое имя)" required aria-label="Имя">
                     </div>
