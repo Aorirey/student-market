@@ -11,3 +11,8 @@ database.sqlite-journal
 node_modules/
 *.log
 .DS_Store
+
+# Старые файлы фронтенда (заменены на frontend/)
+index.html
+css/
+js/
