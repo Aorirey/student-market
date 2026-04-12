@@ -695,6 +695,7 @@ main {
    ВЫПАДАЮЩИЕ МЕНЮ (select - нативные)
    ============================================ */
 
+/* Скрываем нативные стрелки select */
 select {
     padding: 0.7rem 2.5rem 0.7rem 1rem;
     border-radius: var(--radius-md);
@@ -755,9 +756,9 @@ select:disabled {
     cursor: not-allowed;
 }
 
-/* Select в фильтрах */
+/* Select в фильтрах - скрываем так как используем custom-dropdown */
 .filter-section select {
-    min-width: 240px;
+    display: none !important;
 }
 
 /* Select в формах */
