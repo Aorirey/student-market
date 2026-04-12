@@ -2303,6 +2303,108 @@ input[type="number"] {
         min-width: unset;
     }
 
+    /* Мобильные чаты - полноэкранный режим */
+    .chats-container {
+        flex-direction: column;
+        height: calc(100vh - 200px);
+        min-height: auto;
+        gap: 0;
+        position: relative;
+    }
+
+    .chat-list {
+        width: 100%;
+        max-height: none;
+        height: 100%;
+        border-radius: 0;
+        border: none;
+        padding: 0;
+    }
+
+    .chat-list h3 {
+        padding: var(--space-md) var(--space-lg);
+        border-bottom: 1px solid var(--border);
+        margin: 0;
+        background: var(--bg-surface);
+    }
+
+    .chat-item {
+        padding: var(--space-md) var(--space-lg);
+        border-bottom: 1px solid var(--border);
+        margin: 0;
+        border-radius: 0;
+    }
+
+    /* Окно чата на мобильном - полноэкранный режим */
+    .chat-window {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 1000;
+        border-radius: 0;
+        margin: 0;
+        background: var(--bg-base);
+        flex-direction: column;
+    }
+
+    .chat-window[style*="display: flex"] {
+        display: flex !important;
+    }
+
+    .chat-header {
+        padding: var(--space-md) var(--space-lg);
+        background: var(--bg-glass);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .btn-back-chat {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        padding: 0.5rem 0.8rem;
+        border-radius: var(--radius-pill);
+        color: var(--primary);
+        font-size: var(--fs-sm);
+        font-weight: 600;
+    }
+
+    #chat-with-name {
+        font-size: var(--fs-base);
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: var(--space-md);
+    }
+
+    /* Поле ввода на мобильном */
+    .chat-input-area {
+        padding: var(--space-sm) var(--space-md);
+        background: var(--bg-glass);
+        border-top: 1px solid var(--border);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+    }
+
+    #chat-message-input {
+        font-size: 16px !important; /* Предотвращает зум на iOS */
+        min-height: 44px;
+    }
+
     .notifications-dropdown {
         width: calc(100vw - 1.5rem);
         right: 0.75rem;
