@@ -1252,6 +1252,9 @@ async function loadSalesData() {
                     } else {
                         fileAction = `<button class="btn-upload" data-action="open-upload-modal" data-sale-id="${sale.id}" data-buyer-id="${escapedBuyerId}" data-seller-id="${escapedSellerId}">📤 Прикрепить работу</button>`;
                     }
+                    
+                    // Кнопка перехода в чат
+                    const chatButton = `<button class="btn-chat-sale" data-action="open-chat-from-sale" data-purchase-id="${sale.id}" data-buyer-id="${escapedBuyerId}" data-seller-id="${escapedSellerId}" data-title="${escapeHTML(sale.title)}">💬 Чат</button>`;
 
                     // Вычисляем срок до конца сдачи
                     let deadlineInfo = '';
@@ -1301,7 +1304,7 @@ async function loadSalesData() {
                     
                     const actionsDiv = document.createElement('div');
                     actionsDiv.className = 'sale-actions';
-                    actionsDiv.innerHTML = fileAction;
+                    actionsDiv.innerHTML = fileAction + chatButton;
                     
                     item.appendChild(infoDiv);
                     item.appendChild(actionsDiv);
@@ -2126,6 +2129,29 @@ async function openChatFromNotification(notificationId) {
     }
 }
 
+// Открыть чат из раздела "Мои продажи"
+async function openChatFromSale(purchaseId, buyerId, sellerId, title) {
+    try {
+        // Определяем имя собеседника (покупателя)
+        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`);
+        const buyer = await buyerResponse.json();
+        const counterpartName = buyer.name || 'Покупатель';
+        
+        // Переходим на вкладку чатов
+        document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
+        
+        document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
+        document.getElementById('cabinet-chats').classList.add('active');
+        
+        // Открываем чат
+        await openChat(purchaseId, counterpartName, title);
+    } catch (error) {
+        console.error('Ошибка открытия чата из продаж:', error);
+        showToast('Ошибка', 'Не удалось открыть чат', 'error');
+    }
+}
+
 // Отправка сообщения
 async function sendMessage() {
     const messageInput = document.getElementById('chat-message-input');
@@ -2498,6 +2524,14 @@ function setupEventListeners() {
                     parseInt(target.dataset.chatId),
                     target.dataset.counterpartName,
                     target.dataset.chatTitle
+                );
+                break;
+            case 'open-chat-from-sale':
+                openChatFromSale(
+                    parseInt(target.dataset.purchaseId),
+                    target.dataset.buyerId,
+                    target.dataset.sellerId,
+                    target.dataset.title
                 );
                 break;
         }
