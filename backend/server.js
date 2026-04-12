@@ -153,6 +153,24 @@ function sanitizeHTML(str) {
     return String(str).replace(/[&<>"'/]/g, char => map[char]);
 }
 
+// Декодирование HTML-сущностей для уведомлений
+function decodeHTML(str) {
+    if (!str) return str;
+    const map = {
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#x27;': "'",
+        '&#x2F;': '/'
+    };
+    let result = String(str);
+    for (const [encoded, decoded] of Object.entries(map)) {
+        result = result.replace(new RegExp(encoded, 'g'), decoded);
+    }
+    return result;
+}
+
 // Helper: автоматическое создание уведомлений + Telegram
 function createNotification(userId, title, message, type) {
     try {
@@ -1581,8 +1599,11 @@ if (dbMode === 'postgres') {
             // Форматируем дату срока сдачи
             const deadlineFormatted = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
 
+            // Декодируем HTML-сущности для корректного отображения в уведомлении
+            const decodedTitle = decodeHTML(title);
+
             // Уведомление только продавцу
-            createNotification(sellerId, '💰 Новая покупка', `Вашу работу "${title}" купили! Срок сдачи: ${deadlineFormatted}`, 'purchase');
+            createNotification(sellerId, '💰 Новая покупка', `Вашу работу "${decodedTitle}" купили! Срок сдачи: ${deadlineFormatted}`, 'purchase');
 
             res.status(201).json({
                 id: purchaseId,
