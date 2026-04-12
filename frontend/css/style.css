@@ -2138,6 +2138,28 @@ input[type="number"] {
     color: #1a1a1a;
 }
 
+.btn-chat-sale {
+    background: var(--primary-gradient);
+    color: #fff;
+    border: none;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    transition: all var(--transition-fast);
+    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.25);
+    cursor: pointer;
+}
+
+.btn-chat-sale:hover {
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+}
+
+.btn-chat-sale:active {
+    transform: scale(0.97);
+}
+
 .btn-review {
     background: var(--bg-surface);
     color: var(--text-secondary);
