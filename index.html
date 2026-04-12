@@ -56,18 +56,12 @@
         <div id="practices" class="tab-content active">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <div class="custom-dropdown" data-filter="practices" data-value="all">
-                    <div class="custom-dropdown-trigger">
-                        <span class="custom-dropdown-value">Все дисциплины</span>
-                        <span class="custom-dropdown-arrow">▼</span>
-                    </div>
-                    <div class="custom-dropdown-menu">
-                        <div class="custom-dropdown-option active" data-value="all">Все дисциплины</div>
-                        <div class="custom-dropdown-option" data-value="Основы программирования">Основы программирования</div>
-                        <div class="custom-dropdown-option" data-value="Высшая математика">Высшая математика</div>
-                        <div class="custom-dropdown-option" data-value="Физика">Физика</div>
-                    </div>
-                </div>
+                <select id="select-practices" data-filter="practices">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Основы программирования">Основы программирования</option>
+                    <option value="Высшая математика">Высшая математика</option>
+                    <option value="Физика">Физика</option>
+                </select>
             </div>
             <div class="products-grid" id="grid-practices"></div>
         </div>
@@ -76,18 +70,12 @@
         <div id="labs" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <div class="custom-dropdown" data-filter="labs" data-value="all">
-                    <div class="custom-dropdown-trigger">
-                        <span class="custom-dropdown-value">Все дисциплины</span>
-                        <span class="custom-dropdown-arrow">▼</span>
-                    </div>
-                    <div class="custom-dropdown-menu">
-                        <div class="custom-dropdown-option active" data-value="all">Все дисциплины</div>
-                        <div class="custom-dropdown-option" data-value="Основы электронной техники">Основы электронной техники</div>
-                        <div class="custom-dropdown-option" data-value="Теоретические основы электротехники">Теоретические основы электротехники</div>
-                        <div class="custom-dropdown-option" data-value="Микропроцессорная техника">Микропроцессорная техника</div>
-                    </div>
-                </div>
+                <select id="select-labs" data-filter="labs">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Основы электронной техники">Основы электронной техники</option>
+                    <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
+                    <option value="Микропроцессорная техника">Микропроцессорная техника</option>
+                </select>
             </div>
             <div class="products-grid" id="grid-labs"></div>
         </div>
@@ -96,18 +84,12 @@
         <div id="courses" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Дисциплина:</span>
-                <div class="custom-dropdown" data-filter="courses" data-value="all">
-                    <div class="custom-dropdown-trigger">
-                        <span class="custom-dropdown-value">Все дисциплины</span>
-                        <span class="custom-dropdown-arrow">▼</span>
-                    </div>
-                    <div class="custom-dropdown-menu">
-                        <div class="custom-dropdown-option active" data-value="all">Все дисциплины</div>
-                        <div class="custom-dropdown-option" data-value="Экономика предприятия">Экономика предприятия</div>
-                        <div class="custom-dropdown-option" data-value="Менеджмент">Менеджмент</div>
-                        <div class="custom-dropdown-option" data-value="Разработка ПО">Разработка ПО</div>
-                    </div>
-                </div>
+                <select id="select-courses" data-filter="courses">
+                    <option value="all">Все дисциплины</option>
+                    <option value="Экономика предприятия">Экономика предприятия</option>
+                    <option value="Менеджмент">Менеджмент</option>
+                    <option value="Разработка ПО">Разработка ПО</option>
+                </select>
             </div>
             <div class="products-grid" id="grid-courses"></div>
         </div>
@@ -116,17 +98,11 @@
         <div id="custom" class="tab-content">
             <div class="filter-section">
                 <span class="filter-label">Фильтр:</span>
-                <div class="custom-dropdown" data-filter="custom" data-value="all">
-                    <div class="custom-dropdown-trigger">
-                        <span class="custom-dropdown-value">Все запросы</span>
-                        <span class="custom-dropdown-arrow">▼</span>
-                    </div>
-                    <div class="custom-dropdown-menu">
-                        <div class="custom-dropdown-option active" data-value="all">Все запросы</div>
-                        <div class="custom-dropdown-option" data-value="with_file">С файлом</div>
-                        <div class="custom-dropdown-option" data-value="without_file">Без файла</div>
-                    </div>
-                </div>
+                <select id="select-custom" data-filter="custom">
+                    <option value="all">Все запросы</option>
+                    <option value="with_file">С файлом</option>
+                    <option value="without_file">Без файла</option>
+                </select>
             </div>
             <div class="products-grid" id="grid-custom"></div>
         </div>
