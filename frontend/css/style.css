@@ -756,11 +756,6 @@ select:disabled {
     cursor: not-allowed;
 }
 
-/* Select в фильтрах - скрываем так как используем custom-dropdown */
-.filter-section select {
-    display: none !important;
-}
-
 /* Select в формах */
 .add-product-form select,
 .cabinet-info select {
