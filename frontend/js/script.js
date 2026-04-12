@@ -2087,6 +2087,45 @@ function closeChatWindow() {
     updateFilePreview();
 }
 
+// Открыть чат из уведомления
+async function openChatFromNotification(notificationId) {
+    try {
+        // Получаем информацию о покупке из уведомлений или из списка покупок/продаж
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchases = await purchasesResponse.json();
+        
+        // Ищем последнюю активную покупку
+        const purchase = purchases.find(p => p.status === 'active');
+        
+        if (purchase) {
+            // Определяем имя собеседника
+            const sellerResponse = await fetch(`${API_URL}/users/${purchase.sellerId}`);
+            const seller = await sellerResponse.json();
+            const counterpartName = seller.name || 'Продавец';
+            
+            // Переходим на вкладку чатов
+            document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
+            
+            document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
+            document.getElementById('cabinet-chats').classList.add('active');
+            
+            // Открываем чат
+            await openChat(purchase.id, counterpartName, purchase.title);
+        } else {
+            // Если не нашли покупку, просто открываем вкладку чатов
+            document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
+            
+            document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
+            document.getElementById('cabinet-chats').classList.add('active');
+        }
+    } catch (error) {
+        console.error('Ошибка открытия чата из уведомления:', error);
+        showToast('Ошибка', 'Не удалось открыть чат', 'error');
+    }
+}
+
 // Отправка сообщения
 async function sendMessage() {
     const messageInput = document.getElementById('chat-message-input');
@@ -2285,6 +2324,16 @@ async function loadNotifications() {
             item.appendChild(messageEl);
             item.appendChild(timeEl);
 
+            // Добавляем кнопку "Перейти к обсуждению" для уведомлений о покупках
+            if (notification.type === 'purchase') {
+                const actionBtn = document.createElement('button');
+                actionBtn.className = 'notification-action-btn';
+                actionBtn.textContent = '💬 Перейти к обсуждению';
+                actionBtn.dataset.action = 'open-chat-from-notification';
+                actionBtn.dataset.notificationId = notification.id;
+                item.appendChild(actionBtn);
+            }
+
             if (!notification.isRead) {
                 item.dataset.action = 'mark-notification-read';
                 item.dataset.notificationId = notification.id;
@@ -2423,6 +2472,9 @@ function setupEventListeners() {
                 break;
             case 'mark-notification-read':
                 markNotificationRead(target.dataset.notificationId);
+                break;
+            case 'open-chat-from-notification':
+                openChatFromNotification(parseInt(target.dataset.notificationId));
                 break;
             case 'view-purchase-file':
                 viewPurchaseFile(parseInt(target.dataset.purchaseId));
