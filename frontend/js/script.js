@@ -2093,39 +2093,62 @@ function closeChatWindow() {
 // Открыть чат из уведомления
 async function openChatFromNotification(notificationId) {
     try {
-        // Получаем информацию о покупке из уведомлений или из списка покупок/продаж
+        console.log('[CHAT-NOTIFICATION] Открываем чат из уведомления:', notificationId);
+        
+        // Получаем покупки как покупатель
         const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
         const purchases = await purchasesResponse.json();
+        console.log('[CHAT-NOTIFICATION] Покупки:', purchases);
         
-        // Ищем последнюю активную покупку
+        // Получаем продажи как продавец
+        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+        const sales = await salesResponse.json();
+        console.log('[CHAT-NOTIFICATION] Продажи:', sales);
+        
+        // Ищем последнюю активную покупку или продажу
         const purchase = purchases.find(p => p.status === 'active');
+        const sale = sales.find(s => s.status === 'active');
+        
+        let purchaseId, counterpartName, title;
         
         if (purchase) {
-            // Определяем имя собеседника
+            // Мы покупатель - открываем чат с продавцом
+            purchaseId = purchase.id;
+            title = purchase.title;
             const sellerResponse = await fetch(`${API_URL}/users/${purchase.sellerId}`);
             const seller = await sellerResponse.json();
-            const counterpartName = seller.name || 'Продавец';
-            
-            // Переходим на вкладку чатов
-            document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
-            
-            document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
-            document.getElementById('cabinet-chats').classList.add('active');
-            
-            // Открываем чат
-            await openChat(purchase.id, counterpartName, purchase.title);
+            counterpartName = seller.name || 'Продавец';
+        } else if (sale) {
+            // Мы продавец - открываем чат с покупателем
+            purchaseId = sale.id;
+            title = sale.title;
+            const buyerResponse = await fetch(`${API_URL}/users/${sale.buyerId}`);
+            const buyer = await buyerResponse.json();
+            counterpartName = buyer.name || 'Покупатель';
         } else {
-            // Если не нашли покупку, просто открываем вкладку чатов
+            // Если не нашли активных покупок/продаж
+            console.log('[CHAT-NOTIFICATION] Нет активных покупок/продаж');
             document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
             document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
-            
             document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
             document.getElementById('cabinet-chats').classList.add('active');
+            return;
         }
+        
+        console.log('[CHAT-NOTIFICATION] Открываем чат:', purchaseId, counterpartName, title);
+        
+        // Переходим на вкладку чатов
+        document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
+        
+        document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
+        document.getElementById('cabinet-chats').classList.add('active');
+        
+        // Открываем чат
+        await openChat(purchaseId, counterpartName, title);
     } catch (error) {
-        console.error('Ошибка открытия чата из уведомления:', error);
-        showToast('Ошибка', 'Не удалось открыть чат', 'error');
+        console.error('[CHAT-NOTIFICATION] Ошибка:', error);
+        showToast('Ошибка', 'Не удалось открыть чат: ' + error.message, 'error');
     }
 }
 
