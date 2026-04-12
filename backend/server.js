@@ -1578,9 +1578,11 @@ if (dbMode === 'postgres') {
             console.log(`[BALANCE] Баланс покупателя ${buyerId}: ${buyerBalance} -> ${newBuyerBalance}`);
             console.log(`[BALANCE] Баланс продавца ${sellerId}: ${sellerBalance} -> ${newSellerBalance}`);
 
-            // Авто-уведомления
-            createNotification(sellerId, 'Новая покупка', `Ваш товар "${sanitizeHTML(title)}" был куплен`, 'purchase');
-            createNotification(buyerId, 'Покупка оформлена', `Вы купили "${sanitizeHTML(title)}" за ${price}`, 'purchase');
+            // Форматируем дату срока сдачи
+            const deadlineFormatted = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
+
+            // Уведомление только продавцу
+            createNotification(sellerId, '💰 Новая покупка', `Вашу работу "${title}" купили! Срок сдачи: ${deadlineFormatted}`, 'purchase');
 
             res.status(201).json({
                 id: purchaseId,
