@@ -581,13 +581,15 @@ async function renderProducts(category, filterDiscipline) {
 
 // Фильтрация
 function filterProducts(category) {
-    const value = getCustomDropdownValue(category);
+    const select = document.getElementById(`select-${category}`);
+    const value = select.value;
     renderProducts(category, value);
 }
 
 // Фильтрация индивидуальных запросов
 function filterCustomRequests() {
-    const value = getCustomDropdownValue('custom');
+    const select = document.getElementById('select-custom');
+    const value = select.value;
     renderCustomRequests(value);
 }
 
@@ -2523,6 +2525,18 @@ function setupEventListeners() {
 
     // Обработчик изменений (select)
     document.addEventListener('change', function(event) {
+        const filter = event.target.closest('[data-filter]');
+        if (filter) {
+            const category = filter.dataset.filter;
+            const value = filter.value;
+            if (category === 'custom') {
+                filterCustomRequests();
+            } else {
+                filterProducts(category);
+            }
+            return;
+        }
+
         const toggleType = event.target.closest('[data-toggle-product-type]');
         if (toggleType) {
             toggleProductType();
@@ -2589,9 +2603,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderProducts('labs', 'all');
     renderProducts('courses', 'all');
     renderCustomRequests('all');
-    
-    // Инициализация кастомных dropdown
-    initCustomDropdowns();
 
     // Настраиваем event listeners (CSP-safe)
     setupEventListeners();
@@ -2747,81 +2758,3 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 });
-
-// ==================== КАСТОМНЫЕ DROPDOWN ====================
-
-// Инициализация кастомных dropdown
-function initCustomDropdowns() {
-    const dropdowns = document.querySelectorAll('.custom-dropdown');
-    if (dropdowns.length === 0) return;
-    
-    dropdowns.forEach(dropdown => {
-        const trigger = dropdown.querySelector('.custom-dropdown-trigger');
-        const options = dropdown.querySelectorAll('.custom-dropdown-option');
-        
-        if (!trigger || options.length === 0) return;
-        
-        // Открытие/закрытие по клику на триггер
-        trigger.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isOpen = dropdown.classList.contains('open');
-            
-            // Закрыть все остальные dropdown
-            document.querySelectorAll('.custom-dropdown.open').forEach(d => {
-                if (d !== dropdown) d.classList.remove('open');
-            });
-            
-            dropdown.classList.toggle('open');
-        });
-        
-        // Выбор опции
-        options.forEach(option => {
-            option.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const value = option.dataset.value;
-                const filter = dropdown.dataset.filter;
-                
-                // Обновить активную опцию
-                options.forEach(o => o.classList.remove('active'));
-                option.classList.add('active');
-                
-                // Обновить значение триггера
-                const valueSpan = dropdown.querySelector('.custom-dropdown-value');
-                if (valueSpan) {
-                    valueSpan.textContent = option.textContent;
-                }
-                
-                // Обновить data-value
-                dropdown.dataset.value = value;
-                
-                // Закрыть dropdown
-                dropdown.classList.remove('open');
-                
-                // Применить фильтр
-                if (filter === 'custom') {
-                    filterCustomRequests();
-                } else {
-                    filterProducts(filter);
-                }
-            });
-        });
-    });
-}
-
-// Закрытие всех dropdown при клике вне
-function closeAllDropdowns() {
-    document.querySelectorAll('.custom-dropdown.open').forEach(d => {
-        d.classList.remove('open');
-    });
-}
-
-// Получить выбранное значение из custom dropdown
-function getCustomDropdownValue(filterName) {
-    const dropdown = document.querySelector(`.custom-dropdown[data-filter="${filterName}"]`);
-    return dropdown ? dropdown.dataset.value : 'all';
-}
-
-// Глобальный обработчик клика для закрытия dropdown
-document.addEventListener('click', closeAllDropdowns);
-
-// ==================== КАСТОМНЫЕ DROPDOWN ====================
