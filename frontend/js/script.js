@@ -503,7 +503,10 @@ async function renderProducts(category, filterDiscipline) {
 
     try {
         const response = await fetch(`${API_URL}/products`);
-        const products = await response.json();
+        const data = await response.json();
+
+        // Поддержка обоих форматов ответа: { products: [...], pagination: {...} } и [...]
+        const products = Array.isArray(data) ? data : (data.products || []);
 
         const items = products.filter(p => p.category === category);
 
@@ -552,9 +555,20 @@ async function renderProducts(category, filterDiscipline) {
             if (item.teacher) {
                 const teacherEl = document.createElement('p');
                 teacherEl.className = 'card-info';
-                teacherEl.textContent = `👨‍🏫 ${item.teacher}`;
+                teacherEl.textContent = `👨‍ ${item.teacher}`;
                 const prevEl = item.university ? disciplineEl.nextSibling : disciplineEl;
                 disciplineEl.parentNode.insertBefore(teacherEl, prevEl.nextSibling);
+            }
+
+            // Добавляем срок сдачи, если он есть
+            if (item.deadline) {
+                const deadlineDate = new Date(item.deadline);
+                const deadlineStr = deadlineDate.toLocaleDateString('ru-RU');
+                const deadlineEl = document.createElement('p');
+                deadlineEl.className = 'card-info';
+                deadlineEl.textContent = `📅 Срок сдачи: ${deadlineStr}`;
+                const insertAfter = item.teacher ? disciplineEl.nextSibling.nextSibling : (item.university ? disciplineEl.nextSibling : disciplineEl);
+                disciplineEl.parentNode.insertBefore(deadlineEl, insertAfter ? insertAfter.nextSibling : null);
             }
 
             const priceEl = document.createElement('span');
@@ -563,7 +577,7 @@ async function renderProducts(category, filterDiscipline) {
 
             const buyBtn = document.createElement('button');
             buyBtn.className = 'buy-btn';
-            
+
             // Проверяем, является ли текущий пользователь продавцом
             if (currentUser && item.sellerId === currentUser.id) {
                 buyBtn.textContent = 'Ваш товар';
@@ -579,12 +593,12 @@ async function renderProducts(category, filterDiscipline) {
             footer.className = 'card-footer';
             footer.appendChild(priceEl);
             footer.appendChild(buyBtn);
-            
+
             const contentDiv = document.createElement('div');
             contentDiv.appendChild(tagEl);
             contentDiv.appendChild(titleEl);
             contentDiv.appendChild(disciplineEl);
-            
+
             card.appendChild(contentDiv);
             card.appendChild(footer);
             grid.appendChild(card);
@@ -874,8 +888,11 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
     if (type === 'custom') {
         // Создание индивидуального запроса
         const title = document.getElementById('custom-title').value;
+        const university = document.getElementById('custom-university').value;
+        const teacher = document.getElementById('custom-teacher').value;
         const description = document.getElementById('custom-description').value;
         const budget = parseInt(document.getElementById('custom-budget').value);
+        const deadline = document.getElementById('custom-deadline').value;
         const fileInput = document.getElementById('custom-file');
 
         if (!title || !budget) {
@@ -894,12 +911,12 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
                 fileName = file.name;
                 fileData = event.target.result.split(',')[1];
 
-                await submitCustomRequest(title, description, budget, fileName, fileData);
+                await submitCustomRequest(title, university, teacher, description, budget, deadline, fileName, fileData);
             };
 
             reader.readAsDataURL(file);
         } else {
-            await submitCustomRequest(title, description, budget, null, null);
+            await submitCustomRequest(title, university, teacher, description, budget, deadline, null, null);
         }
     } else {
         // Создание готового товара
@@ -958,15 +975,18 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
 });
 
 // Функция отправки индивидуального запроса
-async function submitCustomRequest(title, description, budget, fileName, fileData) {
+async function submitCustomRequest(title, university, teacher, description, budget, deadline, fileName, fileData) {
     try {
         const response = await fetch(`${API_URL}/custom-requests`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 title,
+                university,
+                teacher,
                 description,
                 budget,
+                deadline,
                 requesterId: currentUser.id,
                 requesterName: currentUser.name,
                 fileName,
@@ -982,8 +1002,11 @@ async function submitCustomRequest(title, description, budget, fileName, fileDat
         }
 
         document.getElementById('custom-title').value = '';
+        document.getElementById('custom-university').value = '';
+        document.getElementById('custom-teacher').value = '';
         document.getElementById('custom-description').value = '';
         document.getElementById('custom-budget').value = '';
+        document.getElementById('custom-deadline').value = '';
         document.getElementById('custom-file').value = '';
 
         showToast('Информация', 'Запрос отправлен на модерацию! Администратор проверит его в ближайшее время.', 'info');
