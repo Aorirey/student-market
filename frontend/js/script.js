@@ -520,27 +520,43 @@ async function renderProducts(category, filterDiscipline) {
             const card = document.createElement('div');
             card.className = 'product-card';
             card.setAttribute('data-category', item.category);
-            
+
             // БЕЗОПАСНОСТЬ: Используем textContent для пользовательских данных
             const titleEl = document.createElement('h3');
             titleEl.className = 'card-title';
             titleEl.textContent = item.title;
-            
+
             const sellerLink = document.createElement('a');
             sellerLink.href = '#';
             sellerLink.className = 'seller-link';
             sellerLink.textContent = item.sellerName;
             sellerLink.onclick = (e) => openSellerPage(item.sellerId, item.sellerName, e);
-            
+
             const disciplineEl = document.createElement('p');
             disciplineEl.className = 'card-discipline';
             disciplineEl.innerHTML = 'Продавец: ';
             disciplineEl.appendChild(sellerLink);
-            
+
             const tagEl = document.createElement('span');
             tagEl.className = 'card-tag';
             tagEl.textContent = item.discipline;
-            
+
+            // Добавляем университет и преподавателя, если они есть
+            if (item.university) {
+                const universityEl = document.createElement('p');
+                universityEl.className = 'card-info';
+                universityEl.textContent = `🏛️ ${item.university}`;
+                disciplineEl.parentNode.insertBefore(universityEl, disciplineEl.nextSibling);
+            }
+
+            if (item.teacher) {
+                const teacherEl = document.createElement('p');
+                teacherEl.className = 'card-info';
+                teacherEl.textContent = `👨‍🏫 ${item.teacher}`;
+                const prevEl = item.university ? disciplineEl.nextSibling : disciplineEl;
+                disciplineEl.parentNode.insertBefore(teacherEl, prevEl.nextSibling);
+            }
+
             const priceEl = document.createElement('span');
             priceEl.className = 'price';
             priceEl.textContent = `${item.price} ₽`;
@@ -888,13 +904,15 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
     } else {
         // Создание готового товара
         const title = document.getElementById('product-title').value;
+        const university = document.getElementById('product-university').value;
+        const teacher = document.getElementById('product-teacher').value;
         const category = document.getElementById('product-category').value;
         const discipline = document.getElementById('product-discipline').value;
         const price = parseInt(document.getElementById('product-price').value);
         const deadlineDays = parseInt(document.getElementById('product-deadline').value);
 
         if (!title || !category || !discipline || !price) {
-            showToast('Ошибка', 'Заполните все поля!', 'error');
+            showToast('Ошибка', 'Заполните все обязательные поля!', 'error');
             return;
         }
 
@@ -909,6 +927,8 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title,
+                    university,
+                    teacher,
                     category,
                     discipline,
                     price,
@@ -2009,17 +2029,25 @@ async function loadChatsList() {
 // Открытие чата
 async function openChat(purchaseId, counterpartName, purchaseTitle) {
     currentChatPurchaseId = purchaseId;
-    
+
     document.getElementById('chat-list').style.display = 'block';
     document.getElementById('chat-window').style.display = 'flex';
     document.getElementById('chat-with-name').textContent = `${counterpartName} (${purchaseTitle})`;
-    
+
     // Загружаем сообщения
     await loadChatMessages();
-    
+
     // Автообновление каждые 3 секунды
     if (currentChatInterval) clearInterval(currentChatInterval);
     currentChatInterval = setInterval(loadChatMessages, 3000);
+
+    // Фокус на поле ввода для мобильных
+    const messageInput = document.getElementById('chat-message-input');
+    if (messageInput) {
+        setTimeout(() => {
+            messageInput.focus();
+        }, 300);
+    }
 }
 
 // Загрузка сообщений чата
@@ -2094,31 +2122,34 @@ function closeChatWindow() {
 async function openChatFromNotification(notificationId) {
     try {
         console.log('[CHAT-NOTIFICATION] Открываем чат из уведомления:', notificationId);
-        
-        // Получаем покупки как покупатель
-        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
-        const purchases = await purchasesResponse.json();
-        console.log('[CHAT-NOTIFICATION] Покупки:', purchases);
-        
-        // Получаем продажи как продавец
+
+        // Сначала получим уведомление, чтобы узнать ID покупки
+        const notificationsResponse = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const notifications = await notificationsResponse.json();
+        const notification = notifications.find(n => n.id === notificationId);
+
+        if (!notification) {
+            showToast('Ошибка', 'Уведомление не найдено', 'error');
+            return;
+        }
+
+        console.log('[CHAT-NOTIFICATION] Найдено уведомление:', notification);
+
+        // Извлекаем ID покупки из сообщения уведомления
+        // Сообщение формата: "Ваш товар test куплен за 1 ₽" или "Вашу работу "test" купили!"
+        let purchaseId = null;
+        let counterpartName = null;
+        let title = null;
+
+        // Получаем все покупки где пользователь продавец
         const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
         const sales = await salesResponse.json();
         console.log('[CHAT-NOTIFICATION] Продажи:', sales);
-        
-        // Ищем последнюю активную покупку или продажу
-        const purchase = purchases.find(p => p.status === 'active');
+
+        // Ищем последнюю активную продажу
         const sale = sales.find(s => s.status === 'active');
-        
-        let purchaseId, counterpartName, title;
-        
-        if (purchase) {
-            // Мы покупатель - открываем чат с продавцом
-            purchaseId = purchase.id;
-            title = purchase.title;
-            const sellerResponse = await fetch(`${API_URL}/users/${purchase.sellerId}`);
-            const seller = await sellerResponse.json();
-            counterpartName = seller.name || 'Продавец';
-        } else if (sale) {
+
+        if (sale) {
             // Мы продавец - открываем чат с покупателем
             purchaseId = sale.id;
             title = sale.title;
@@ -2126,24 +2157,24 @@ async function openChatFromNotification(notificationId) {
             const buyer = await buyerResponse.json();
             counterpartName = buyer.name || 'Покупатель';
         } else {
-            // Если не нашли активных покупок/продаж
-            console.log('[CHAT-NOTIFICATION] Нет активных покупок/продаж');
+            // Если не нашли активных продаж
+            console.log('[CHAT-NOTIFICATION] Нет активных продаж');
             document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
             document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
             document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
             document.getElementById('cabinet-chats').classList.add('active');
             return;
         }
-        
+
         console.log('[CHAT-NOTIFICATION] Открываем чат:', purchaseId, counterpartName, title);
-        
+
         // Переходим на вкладку чатов
         document.querySelectorAll('.cabinet-tab').forEach(tab => tab.classList.remove('active'));
         document.querySelector('[data-cabinet-tab="chats"]').classList.add('active');
-        
+
         document.querySelectorAll('.cabinet-section').forEach(section => section.classList.remove('active'));
         document.getElementById('cabinet-chats').classList.add('active');
-        
+
         // Открываем чат
         await openChat(purchaseId, counterpartName, title);
     } catch (error) {
@@ -2238,6 +2269,7 @@ async function sendMessage() {
 // Обработка нажатия Enter в чате
 function handleChatKeyPress(event) {
     if (event.key === 'Enter') {
+        event.preventDefault();
         sendMessage();
     }
 }
@@ -2314,7 +2346,7 @@ async function loadNotifications() {
 
     try {
         const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
-        
+
         // Обработка ошибки 400/404
         if (!response.ok) {
             if (response.status === 400 || response.status === 404) {
@@ -2324,7 +2356,7 @@ async function loadNotifications() {
             }
             throw new Error(`HTTP error: ${response.status}`);
         }
-        
+
         const notifications = await response.json();
 
         // Проверка что notifications это массив
@@ -2351,19 +2383,41 @@ async function loadNotifications() {
             notificationBadge.style.display = 'none';
         }
 
+        // Функция декодирования HTML-сущностей
+        function decodeHTML(str) {
+            if (!str) return str;
+            const map = {
+                '&amp;': '&',
+                '&lt;': '<',
+                '&gt;': '>',
+                '&quot;': '"',
+                '&#x27;': "'",
+                '&#x2F;': '/'
+            };
+            let result = String(str);
+            for (const [encoded, decoded] of Object.entries(map)) {
+                result = result.replace(new RegExp(encoded, 'g'), decoded);
+            }
+            return result;
+        }
+
         notificationsList.innerHTML = '';
         notifications.slice(0, 10).forEach(notification => {
             const item = document.createElement('div');
             item.className = `notification-item ${notification.isRead ? 'read' : 'unread'}`;
 
-            // БЕЗОПАСНОСТЬ: Используем textContent
+            // Декодируем HTML-сущности для корректного отображения
+            const decodedTitle = decodeHTML(notification.title);
+            const decodedMessage = decodeHTML(notification.message);
+
+            // БЕЗОПАСНОСТЬ: Используем textContent для предотвращения XSS
             const titleEl = document.createElement('div');
             titleEl.className = 'notification-title';
-            titleEl.textContent = notification.title;
+            titleEl.textContent = decodedTitle;
 
             const messageEl = document.createElement('div');
             messageEl.className = 'notification-message';
-            messageEl.textContent = notification.message;
+            messageEl.textContent = decodedMessage;
 
             const timeEl = document.createElement('div');
             timeEl.className = 'notification-time';
@@ -2608,9 +2662,20 @@ function setupEventListeners() {
     // Обработчик клавиш (Enter в поле чата)
     document.addEventListener('keypress', function(event) {
         if (event.target.id === 'chat-message-input' && event.key === 'Enter') {
-            sendMessage();
+            event.preventDefault();
+            handleChatKeyPress(event);
         }
     });
+
+    // Обработчик фокуса на поле ввода (для мобильных)
+    document.addEventListener('focus', function(event) {
+        if (event.target.id === 'chat-message-input') {
+            // Прокрутка к полю ввода при фокусе на мобильных
+            setTimeout(() => {
+                event.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 300);
+        }
+    }, true);
 
     // Закрытие модалки при клике на фон
     document.addEventListener('click', function(event) {

@@ -230,8 +230,10 @@ if (dbMode === 'postgres') {
         try { db.run(`ALTER TABLE purchases ADD COLUMN deadline TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE purchases ADD COLUMN fileAttached INTEGER DEFAULT 0`); } catch(e) {}
         try { db.run(`ALTER TABLE purchases ADD COLUMN status TEXT DEFAULT 'active'`); } catch(e) {}
+        try { db.run(`ALTER TABLE products ADD COLUMN university TEXT DEFAULT ''`); } catch(e) {}
+        try { db.run(`ALTER TABLE products ADD COLUMN teacher TEXT DEFAULT ''`); } catch(e) {}
 
-        db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, university TEXT DEFAULT '', teacher TEXT DEFAULT '', category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0, status TEXT DEFAULT 'active')`);
         db.run(`CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, type TEXT NOT NULL, amount INTEGER NOT NULL, description TEXT, purchaseId INTEGER, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         try { db.run(`ALTER TABLE work_files ADD COLUMN uploadedBy TEXT`); } catch(e) {}
@@ -1121,14 +1123,16 @@ if (dbMode === 'postgres') {
             const products = result[0].values.map(row => ({
                 id: row[0],
                 title: sanitizeHTML(row[1]),
-                category: sanitizeHTML(row[2]),
-                discipline: sanitizeHTML(row[3]),
-                price: row[4],
-                sellerId: sanitizeHTML(row[5]),
-                sellerName: sanitizeHTML(row[6]),
-                deadline: row[7],
-                status: sanitizeHTML(row[8]),
-                createdAt: row[9]
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                category: sanitizeHTML(row[4]),
+                discipline: sanitizeHTML(row[5]),
+                price: row[6],
+                sellerId: sanitizeHTML(row[7]),
+                sellerName: sanitizeHTML(row[8]),
+                deadline: row[9],
+                status: sanitizeHTML(row[10]),
+                createdAt: row[11]
             }));
 
             res.json({
@@ -1186,14 +1190,16 @@ if (dbMode === 'postgres') {
             res.json(result.length > 0 ? result[0].values.map(row => ({
                 id: row[0],
                 title: sanitizeHTML(row[1]),
-                category: sanitizeHTML(row[2]),
-                discipline: sanitizeHTML(row[3]),
-                price: row[4],
-                sellerId: sanitizeHTML(row[5]),
-                sellerName: sanitizeHTML(row[6]),
-                deadline: row[7],
-                status: sanitizeHTML(row[8]),
-                createdAt: row[9]
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                category: sanitizeHTML(row[4]),
+                discipline: sanitizeHTML(row[5]),
+                price: row[6],
+                sellerId: sanitizeHTML(row[7]),
+                sellerName: sanitizeHTML(row[8]),
+                deadline: row[9],
+                status: sanitizeHTML(row[10]),
+                createdAt: row[11]
             })) : []);
         } catch (error) {
             console.error('Ошибка получения всех товаров:', error.message);
@@ -1211,14 +1217,16 @@ if (dbMode === 'postgres') {
             res.json(result.length > 0 ? result[0].values.map(row => ({
                 id: row[0],
                 title: sanitizeHTML(row[1]),
-                category: sanitizeHTML(row[2]),
-                discipline: sanitizeHTML(row[3]),
-                price: row[4],
-                sellerId: sanitizeHTML(row[5]),
-                sellerName: sanitizeHTML(row[6]),
-                deadline: row[7],
-                status: sanitizeHTML(row[8]),
-                createdAt: row[9]
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                category: sanitizeHTML(row[4]),
+                discipline: sanitizeHTML(row[5]),
+                price: row[6],
+                sellerId: sanitizeHTML(row[7]),
+                sellerName: sanitizeHTML(row[8]),
+                deadline: row[9],
+                status: sanitizeHTML(row[10]),
+                createdAt: row[11]
             })) : []);
         } catch (error) {
             console.error('Ошибка получения товаров пользователя:', error.message);
@@ -1228,36 +1236,38 @@ if (dbMode === 'postgres') {
 
     app.post('/api/products', authenticateToken, productCreateValidator, (req, res) => {
         try {
-            const { title, category, discipline, price, sellerId, sellerName, deadline } = req.body;
+            const { title, university, teacher, category, discipline, price, sellerId, sellerName, deadline } = req.body;
 
             // Проверяем, что авторизованный пользователь — это продавец
             if (req.user.id !== sellerId && !req.user.isAdmin) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать товары только от своего имени' });
             }
-            
-            db.run("INSERT INTO products (title, category, discipline, price, sellerId, sellerName, deadline, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')", 
-                [sanitizeHTML(title), sanitizeHTML(category), sanitizeHTML(discipline), price, sanitizeHTML(sellerId), sanitizeHTML(sellerName), deadline || null]);
+
+            db.run("INSERT INTO products (title, university, teacher, category, discipline, price, sellerId, sellerName, deadline, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+                [sanitizeHTML(title), sanitizeHTML(university || ''), sanitizeHTML(teacher || ''), sanitizeHTML(category), sanitizeHTML(discipline), price, sanitizeHTML(sellerId), sanitizeHTML(sellerName), deadline || null]);
             saveDatabase();
-            
+
             const result = db.exec("SELECT last_insert_rowid()");
             const productId = result[0].values[0][0];
-            
+
             console.log(`[PRODUCT] Создан новый товар: ${productId}, продавец: ${sellerId}`);
-            
-            res.status(201).json({ 
-                id: productId, 
-                title: sanitizeHTML(title), 
-                category: sanitizeHTML(category), 
-                discipline: sanitizeHTML(discipline), 
-                price, 
-                sellerId: sanitizeHTML(sellerId), 
-                sellerName: sanitizeHTML(sellerName), 
-                deadline, 
-                status: 'pending' 
+
+            res.status(201).json({
+                id: productId,
+                title: sanitizeHTML(title),
+                university: sanitizeHTML(university || ''),
+                teacher: sanitizeHTML(teacher || ''),
+                category: sanitizeHTML(category),
+                discipline: sanitizeHTML(discipline),
+                price,
+                sellerId: sanitizeHTML(sellerId),
+                sellerName: sanitizeHTML(sellerName),
+                deadline,
+                status: 'pending'
             });
-        } catch (error) { 
+        } catch (error) {
             console.error('Ошибка создания товара:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
 
@@ -1602,8 +1612,8 @@ if (dbMode === 'postgres') {
             // Декодируем HTML-сущности для корректного отображения в уведомлении
             const decodedTitle = decodeHTML(title);
 
-            // Уведомление только продавцу
-            createNotification(sellerId, '💰 Новая покупка', `Вашу работу "${decodedTitle}" купили! Срок сдачи: ${deadlineFormatted}`, 'purchase');
+            // Уведомление только продавцу (без кавычек вокруг названия)
+            createNotification(sellerId, '💰 Новая покупка', `Ваш товар ${decodedTitle} куплен за ${price} ₽`, 'purchase');
 
             res.status(201).json({
                 id: purchaseId,
