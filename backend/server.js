@@ -239,7 +239,10 @@ if (dbMode === 'postgres') {
         try { db.run(`ALTER TABLE work_files ADD COLUMN uploadedBy TEXT`); } catch(e) {}
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedBy TEXT, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, rating INTEGER NOT NULL, comment TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
-        db.run(`CREATE TABLE IF NOT EXISTS custom_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT, budget INTEGER NOT NULL, requesterId TEXT NOT NULL, requesterName TEXT NOT NULL, fileName TEXT, fileData TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS custom_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, university TEXT DEFAULT '', teacher TEXT DEFAULT '', description TEXT, budget INTEGER NOT NULL, deadline TEXT DEFAULT '', requesterId TEXT NOT NULL, requesterName TEXT NOT NULL, fileName TEXT, fileData TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        try { db.run(`ALTER TABLE custom_requests ADD COLUMN university TEXT DEFAULT ''`); } catch(e) {}
+        try { db.run(`ALTER TABLE custom_requests ADD COLUMN teacher TEXT DEFAULT ''`); } catch(e) {}
+        try { db.run(`ALTER TABLE custom_requests ADD COLUMN deadline TEXT DEFAULT ''`); } catch(e) {}
         try { db.run(`ALTER TABLE chat_messages ADD COLUMN isRead INTEGER DEFAULT 0`); } catch(e) {}
 
         db.run(`CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, senderId TEXT NOT NULL, receiverId TEXT NOT NULL, message TEXT, fileName TEXT, fileData TEXT, fileType TEXT, isRead INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -2348,21 +2351,24 @@ if (dbMode === 'postgres') {
     app.get('/api/custom-requests', (req, res) => {
         try {
             const result = db.exec("SELECT * FROM custom_requests WHERE status = 'approved'");
-            res.json(result.length > 0 ? result[0].values.map(row => ({ 
-                id: row[0], 
-                title: sanitizeHTML(row[1]), 
-                description: sanitizeHTML(row[2]), 
-                budget: row[3], 
-                requesterId: sanitizeHTML(row[4]), 
-                requesterName: sanitizeHTML(row[5]), 
-                fileName: sanitizeHTML(row[6]), 
-                fileData: row[7], 
-                status: sanitizeHTML(row[8]), 
-                createdAt: row[9] 
+            res.json(result.length > 0 ? result[0].values.map(row => ({
+                id: row[0],
+                title: sanitizeHTML(row[1]),
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                description: sanitizeHTML(row[4]),
+                budget: row[5],
+                deadline: sanitizeHTML(row[6] || ''),
+                requesterId: sanitizeHTML(row[7]),
+                requesterName: sanitizeHTML(row[8]),
+                fileName: sanitizeHTML(row[9]),
+                fileData: row[10],
+                status: sanitizeHTML(row[11]),
+                createdAt: row[12]
             })) : []);
-        } catch (error) { 
+        } catch (error) {
             console.error('Ошибка получения запросов:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
 
@@ -2373,14 +2379,17 @@ if (dbMode === 'postgres') {
             res.json(result.length > 0 ? result[0].values.map(row => ({
                 id: row[0],
                 title: sanitizeHTML(row[1]),
-                description: sanitizeHTML(row[2]),
-                budget: row[3],
-                requesterId: sanitizeHTML(row[4]),
-                requesterName: sanitizeHTML(row[5]),
-                fileName: sanitizeHTML(row[6]),
-                fileData: row[7],
-                status: sanitizeHTML(row[8]),
-                createdAt: row[9]
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                description: sanitizeHTML(row[4]),
+                budget: row[5],
+                deadline: sanitizeHTML(row[6] || ''),
+                requesterId: sanitizeHTML(row[7]),
+                requesterName: sanitizeHTML(row[8]),
+                fileName: sanitizeHTML(row[9]),
+                fileData: row[10],
+                status: sanitizeHTML(row[11]),
+                createdAt: row[12]
             })) : []);
         } catch (error) {
             console.error('Ошибка получения всех запросов:', error.message);
@@ -2390,35 +2399,38 @@ if (dbMode === 'postgres') {
 
     app.post('/api/custom-requests', authenticateToken, customRequestCreateValidator, (req, res) => {
         try {
-            const { title, description, budget, requesterId, requesterName, fileName, fileData } = req.body;
+            const { title, university, teacher, description, budget, deadline, requesterId, requesterName, fileName, fileData } = req.body;
 
             // Проверяем, что авторизованный пользователь — это заказчик
             if (req.user.id !== requesterId && !req.user.isAdmin) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать запросы только от своего имени' });
             }
-            
-            db.run("INSERT INTO custom_requests (title, description, budget, requesterId, requesterName, fileName, fileData, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')", 
-                [sanitizeHTML(title), sanitizeHTML(description || ''), budget, sanitizeHTML(requesterId), sanitizeHTML(requesterName), sanitizeHTML(fileName || null), fileData || null]);
+
+            db.run("INSERT INTO custom_requests (title, university, teacher, description, budget, deadline, requesterId, requesterName, fileName, fileData, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+                [sanitizeHTML(title), sanitizeHTML(university || ''), sanitizeHTML(teacher || ''), sanitizeHTML(description || ''), budget, sanitizeHTML(deadline || ''), sanitizeHTML(requesterId), sanitizeHTML(requesterName), sanitizeHTML(fileName || null), fileData || null]);
             saveDatabase();
-            
+
             const result = db.exec("SELECT last_insert_rowid()");
             const requestId = result[0].values[0][0];
-            
+
             console.log(`[CUSTOM_REQUEST] Создан запрос: ${requestId}, заказчик: ${requesterId}`);
-            
-            res.status(201).json({ 
-                id: requestId, 
-                title: sanitizeHTML(title), 
-                description: sanitizeHTML(description || ''), 
-                budget, 
-                requesterId: sanitizeHTML(requesterId), 
-                requesterName: sanitizeHTML(requesterName), 
-                fileName: sanitizeHTML(fileName || null), 
-                status: 'pending' 
+
+            res.status(201).json({
+                id: requestId,
+                title: sanitizeHTML(title),
+                university: sanitizeHTML(university || ''),
+                teacher: sanitizeHTML(teacher || ''),
+                description: sanitizeHTML(description || ''),
+                budget,
+                deadline: sanitizeHTML(deadline || ''),
+                requesterId: sanitizeHTML(requesterId),
+                requesterName: sanitizeHTML(requesterName),
+                fileName: sanitizeHTML(fileName || null),
+                status: 'pending'
             });
-        } catch (error) { 
+        } catch (error) {
             console.error('Ошибка создания запроса:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' }); 
+            res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
 

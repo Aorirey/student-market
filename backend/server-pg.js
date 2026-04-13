@@ -261,17 +261,25 @@ async function initDatabase() {
         )`);
         
         await pool.query(`CREATE TABLE IF NOT EXISTS custom_requests (
-            id SERIAL PRIMARY KEY, 
-            title TEXT NOT NULL, 
-            description TEXT, 
-            budget INTEGER NOT NULL, 
-            requester_id TEXT NOT NULL, 
-            requester_name TEXT NOT NULL, 
-            file_name TEXT, 
-            file_data TEXT, 
-            status TEXT DEFAULT 'pending', 
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            university TEXT DEFAULT '',
+            teacher TEXT DEFAULT '',
+            description TEXT,
+            budget INTEGER NOT NULL,
+            deadline TEXT DEFAULT '',
+            requester_id TEXT NOT NULL,
+            requester_name TEXT NOT NULL,
+            file_name TEXT,
+            file_data TEXT,
+            status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // Миграции для custom_requests
+        await pool.query(`ALTER TABLE custom_requests ADD COLUMN IF NOT EXISTS university TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE custom_requests ADD COLUMN IF NOT EXISTS teacher TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE custom_requests ADD COLUMN IF NOT EXISTS deadline TEXT DEFAULT ''`);
         
         await pool.query(`CREATE TABLE IF NOT EXISTS chat_messages (
             id SERIAL PRIMARY KEY, 
@@ -1069,46 +1077,62 @@ app.post('/api/reviews', reviewCreateValidator, async (req, res) => {
 app.get('/api/custom-requests', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM custom_requests WHERE status = 'approved'");
-        res.json(result.rows.map(row => ({ 
-            id: row.id, title: sanitizeHTML(row.title), description: sanitizeHTML(row.description), 
-            budget: row.budget, requesterId: sanitizeHTML(row.requester_id), 
-            requesterName: sanitizeHTML(row.requester_name), fileName: sanitizeHTML(row.file_name), 
-            fileData: row.file_data, status: sanitizeHTML(row.status), createdAt: row.created_at 
+        res.json(result.rows.map(row => ({
+            id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
+            teacher: sanitizeHTML(row.teacher || ''), description: sanitizeHTML(row.description),
+            budget: row.budget, deadline: sanitizeHTML(row.deadline || ''),
+            requesterId: sanitizeHTML(row.requester_id), requesterName: sanitizeHTML(row.requester_name),
+            fileName: sanitizeHTML(row.file_name), fileData: row.file_data,
+            status: sanitizeHTML(row.status), createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка запросов:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
 app.get('/api/custom-requests/all', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM custom_requests");
-        res.json(result.rows.map(row => ({ 
-            id: row.id, title: sanitizeHTML(row.title), description: sanitizeHTML(row.description), 
-            budget: row.budget, requesterId: sanitizeHTML(row.requester_id), 
-            requesterName: sanitizeHTML(row.requester_name), fileName: sanitizeHTML(row.file_name), 
-            fileData: row.file_data, status: sanitizeHTML(row.status), createdAt: row.created_at 
+        res.json(result.rows.map(row => ({
+            id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
+            teacher: sanitizeHTML(row.teacher || ''), description: sanitizeHTML(row.description),
+            budget: row.budget, deadline: sanitizeHTML(row.deadline || ''),
+            requesterId: sanitizeHTML(row.requester_id), requesterName: sanitizeHTML(row.requester_name),
+            fileName: sanitizeHTML(row.file_name), fileData: row.file_data,
+            status: sanitizeHTML(row.status), createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка всех запросов:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
 app.post('/api/custom-requests', customRequestCreateValidator, async (req, res) => {
     try {
-        const { title, description, budget, requesterId, requesterName, fileName, fileData } = req.body;
+        const { title, university, teacher, description, budget, deadline, requesterId, requesterName, fileName, fileData } = req.body;
         const result = await pool.query(
-            `INSERT INTO custom_requests (title, description, budget, requester_id, requester_name, file_name, file_data, status) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`, 
-            [sanitizeHTML(title), sanitizeHTML(description || ''), budget, sanitizeHTML(requesterId), sanitizeHTML(requesterName), sanitizeHTML(fileName || null), fileData || null]
+            `INSERT INTO custom_requests (title, university, teacher, description, budget, deadline, requester_id, requester_name, file_name, file_data, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') RETURNING id`,
+            [sanitizeHTML(title), sanitizeHTML(university || ''), sanitizeHTML(teacher || ''), sanitizeHTML(description || ''), budget, sanitizeHTML(deadline || ''), sanitizeHTML(requesterId), sanitizeHTML(requesterName), sanitizeHTML(fileName || null), fileData || null]
         );
         console.log(`[CUSTOM_REQUEST] Создан запрос: ${result.rows[0].id}`);
-        res.status(201).json({ id: result.rows[0].id, title: sanitizeHTML(title), description: sanitizeHTML(description || ''), budget, requesterId: sanitizeHTML(requesterId), requesterName: sanitizeHTML(requesterName), fileName: sanitizeHTML(fileName || null), status: 'pending' });
-    } catch (error) { 
+        res.status(201).json({ 
+            id: result.rows[0].id, 
+            title: sanitizeHTML(title), 
+            university: sanitizeHTML(university || ''),
+            teacher: sanitizeHTML(teacher || ''),
+            description: sanitizeHTML(description || ''), 
+            budget, 
+            deadline: sanitizeHTML(deadline || ''),
+            requesterId: sanitizeHTML(requesterId), 
+            requesterName: sanitizeHTML(requesterName), 
+            fileName: sanitizeHTML(fileName || null), 
+            status: 'pending' 
+        });
+    } catch (error) {
         console.error('Ошибка запроса:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
