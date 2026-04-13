@@ -544,33 +544,6 @@ async function renderProducts(category, filterDiscipline) {
             tagEl.className = 'card-tag';
             tagEl.textContent = item.discipline;
 
-            // Добавляем университет и преподавателя, если они есть
-            if (item.university) {
-                const universityEl = document.createElement('p');
-                universityEl.className = 'card-info';
-                universityEl.textContent = `🏛️ ${item.university}`;
-                disciplineEl.parentNode.insertBefore(universityEl, disciplineEl.nextSibling);
-            }
-
-            if (item.teacher) {
-                const teacherEl = document.createElement('p');
-                teacherEl.className = 'card-info';
-                teacherEl.textContent = `👨‍ ${item.teacher}`;
-                const prevEl = item.university ? disciplineEl.nextSibling : disciplineEl;
-                disciplineEl.parentNode.insertBefore(teacherEl, prevEl.nextSibling);
-            }
-
-            // Добавляем срок сдачи, если он есть
-            if (item.deadline) {
-                const deadlineDate = new Date(item.deadline);
-                const deadlineStr = deadlineDate.toLocaleDateString('ru-RU');
-                const deadlineEl = document.createElement('p');
-                deadlineEl.className = 'card-info';
-                deadlineEl.textContent = `📅 Срок сдачи: ${deadlineStr}`;
-                const insertAfter = item.teacher ? disciplineEl.nextSibling.nextSibling : (item.university ? disciplineEl.nextSibling : disciplineEl);
-                disciplineEl.parentNode.insertBefore(deadlineEl, insertAfter ? insertAfter.nextSibling : null);
-            }
-
             const priceEl = document.createElement('span');
             priceEl.className = 'price';
             priceEl.textContent = `${item.price} ₽`;
@@ -598,6 +571,30 @@ async function renderProducts(category, filterDiscipline) {
             contentDiv.appendChild(tagEl);
             contentDiv.appendChild(titleEl);
             contentDiv.appendChild(disciplineEl);
+
+            // Добавляем университет, преподавателя и срок, если они есть
+            if (item.university) {
+                const universityEl = document.createElement('p');
+                universityEl.className = 'card-info';
+                universityEl.textContent = `🏛️ ${item.university}`;
+                contentDiv.appendChild(universityEl);
+            }
+
+            if (item.teacher) {
+                const teacherEl = document.createElement('p');
+                teacherEl.className = 'card-info';
+                teacherEl.textContent = `👨‍ ${item.teacher}`;
+                contentDiv.appendChild(teacherEl);
+            }
+
+            if (item.deadline) {
+                const deadlineDate = new Date(item.deadline);
+                const deadlineStr = deadlineDate.toLocaleDateString('ru-RU');
+                const deadlineEl = document.createElement('p');
+                deadlineEl.className = 'card-info';
+                deadlineEl.textContent = `📅 Срок сдачи: ${deadlineStr}`;
+                contentDiv.appendChild(deadlineEl);
+            }
 
             card.appendChild(contentDiv);
             card.appendChild(footer);
