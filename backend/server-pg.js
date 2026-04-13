@@ -207,6 +207,8 @@ async function initDatabase() {
 
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
+        await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS university TEXT DEFAULT ''`);
+        await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS teacher TEXT DEFAULT ''`);
 
         // Миграции для purchases (для существующих БД)
         await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS seller_id TEXT`);
@@ -214,15 +216,17 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS file_attached BOOLEAN DEFAULT false`);
 
         await pool.query(`CREATE TABLE IF NOT EXISTS products (
-            id SERIAL PRIMARY KEY, 
-            title TEXT NOT NULL, 
-            category TEXT NOT NULL, 
-            discipline TEXT NOT NULL, 
-            price INTEGER NOT NULL, 
-            seller_id TEXT NOT NULL, 
-            seller_name TEXT NOT NULL, 
-            deadline TIMESTAMP, 
-            status TEXT DEFAULT 'pending', 
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            university TEXT DEFAULT '',
+            teacher TEXT DEFAULT '',
+            category TEXT NOT NULL,
+            discipline TEXT NOT NULL,
+            price INTEGER NOT NULL,
+            seller_id TEXT NOT NULL,
+            seller_name TEXT NOT NULL,
+            deadline TIMESTAMP,
+            status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
         
@@ -796,61 +800,76 @@ app.post('/api/auth/login', [
 app.get('/api/products', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products WHERE status = 'approved'");
-        res.json(result.rows.map(row => ({ 
-            id: row.id, title: sanitizeHTML(row.title), category: sanitizeHTML(row.category), 
-            discipline: sanitizeHTML(row.discipline), price: row.price, 
-            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name), 
-            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at 
+        res.json(result.rows.map(row => ({
+            id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
+            teacher: sanitizeHTML(row.teacher || ''), category: sanitizeHTML(row.category),
+            discipline: sanitizeHTML(row.discipline), price: row.price,
+            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name),
+            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка товаров:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
 app.get('/api/products/all', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products");
-        res.json(result.rows.map(row => ({ 
-            id: row.id, title: sanitizeHTML(row.title), category: sanitizeHTML(row.category), 
-            discipline: sanitizeHTML(row.discipline), price: row.price, 
-            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name), 
-            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at 
+        res.json(result.rows.map(row => ({
+            id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
+            teacher: sanitizeHTML(row.teacher || ''), category: sanitizeHTML(row.category),
+            discipline: sanitizeHTML(row.discipline), price: row.price,
+            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name),
+            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка всех товаров:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
 app.get('/api/users/:id/products', userIdValidator, async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products WHERE seller_id = $1", [req.params.id]);
-        res.json(result.rows.map(row => ({ 
-            id: row.id, title: sanitizeHTML(row.title), category: sanitizeHTML(row.category), 
-            discipline: sanitizeHTML(row.discipline), price: row.price, 
-            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name), 
-            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at 
+        res.json(result.rows.map(row => ({
+            id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
+            teacher: sanitizeHTML(row.teacher || ''), category: sanitizeHTML(row.category),
+            discipline: sanitizeHTML(row.discipline), price: row.price,
+            sellerId: sanitizeHTML(row.seller_id), sellerName: sanitizeHTML(row.seller_name),
+            deadline: row.deadline, status: sanitizeHTML(row.status), createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка товаров пользователя:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
 app.post('/api/products', productCreateValidator, async (req, res) => {
     try {
-        const { title, category, discipline, price, sellerId, sellerName, deadline } = req.body;
+        const { title, university, teacher, category, discipline, price, sellerId, sellerName, deadline } = req.body;
         const result = await pool.query(
-            `INSERT INTO products (title, category, discipline, price, seller_id, seller_name, deadline, status) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`, 
-            [sanitizeHTML(title), sanitizeHTML(category), sanitizeHTML(discipline), price, sanitizeHTML(sellerId), sanitizeHTML(sellerName), deadline || null]
+            `INSERT INTO products (title, university, teacher, category, discipline, price, seller_id, seller_name, deadline, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
+            [sanitizeHTML(title), sanitizeHTML(university || ''), sanitizeHTML(teacher || ''), sanitizeHTML(category), sanitizeHTML(discipline), price, sanitizeHTML(sellerId), sanitizeHTML(sellerName), deadline || null]
         );
         console.log(`[PRODUCT] Создан товар: ${result.rows[0].id}`);
-        res.status(201).json({ id: result.rows[0].id, title: sanitizeHTML(title), category: sanitizeHTML(category), discipline: sanitizeHTML(discipline), price, sellerId: sanitizeHTML(sellerId), sellerName: sanitizeHTML(sellerName), deadline, status: 'pending' });
-    } catch (error) { 
+        res.status(201).json({ 
+            id: result.rows[0].id, 
+            title: sanitizeHTML(title), 
+            university: sanitizeHTML(university || ''), 
+            teacher: sanitizeHTML(teacher || ''),
+            category: sanitizeHTML(category), 
+            discipline: sanitizeHTML(discipline), 
+            price, 
+            sellerId: sanitizeHTML(sellerId), 
+            sellerName: sanitizeHTML(sellerName), 
+            deadline, 
+            status: 'pending' 
+        });
+    } catch (error) {
         console.error('Ошибка создания товара:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
@@ -921,6 +940,24 @@ app.get('/api/users/:id/sales', userIdValidator, async (req, res) => {
     }
 });
 
+// Декодирование HTML-сущностей для уведомлений
+function decodeHTML(str) {
+    if (!str) return str;
+    const map = {
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#x27;': "'",
+        '&#x2F;': '/'
+    };
+    let result = String(str);
+    for (const [encoded, decoded] of Object.entries(map)) {
+        result = result.replace(new RegExp(encoded, 'g'), decoded);
+    }
+    return result;
+}
+
 app.post('/api/purchases', purchaseCreateValidator, async (req, res) => {
     try {
         const { productId, title, price, buyerId, sellerId, deadline } = req.body;
@@ -934,9 +971,10 @@ app.post('/api/purchases', purchaseCreateValidator, async (req, res) => {
         setImmediate(async () => {
             try {
                 if (pool) {
+                    const decodedTitle = decodeHTML(title);
                     await pool.query(
                         "INSERT INTO notifications (user_id, title, message, type) VALUES ($1, $2, $3, $4)",
-                        [sellerId, '💰 Новая покупка', `Ваш товар "${sanitizeHTML(title)}" куплен за ${price} ₽`, 'purchase']
+                        [sellerId, '💰 Новая покупка', `Ваш товар ${decodedTitle} куплен за ${price} ₽`, 'purchase']
                     );
                 }
             } catch (err) {

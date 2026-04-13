@@ -757,6 +757,15 @@ select:disabled {
     text-decoration: underline;
 }
 
+.card-info {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-xs);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
 .card-footer {
     display: flex;
     justify-content: space-between;
@@ -870,14 +879,14 @@ select:disabled {
 .add-product-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-lg);
     max-width: 500px;
 }
 
 .add-product-form input,
 .add-product-form select,
 .add-product-form textarea {
-    padding: 0.75rem 1rem;
+    padding: 1rem 1.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     font-size: var(--fs-sm);
@@ -2335,6 +2344,14 @@ input[type="number"] {
         border-radius: 0;
     }
 
+    /* Кнопка действия в уведомлении на мобильном */
+    .notification-action-btn {
+        min-height: 44px;
+        padding: 0.7rem 1rem;
+        font-size: var(--fs-sm);
+        margin-top: var(--space-md);
+    }
+
     /* Окно чата на мобильном - полноэкранный режим */
     .chat-window {
         display: none;
@@ -2391,6 +2408,7 @@ input[type="number"] {
     /* Поле ввода на мобильном */
     .chat-input-area {
         padding: var(--space-sm) var(--space-md);
+        padding-bottom: calc(var(--space-sm) + env(safe-area-inset-bottom));
         background: var(--bg-glass);
         border-top: 1px solid var(--border);
         backdrop-filter: blur(12px);
@@ -2398,11 +2416,86 @@ input[type="number"] {
         position: sticky;
         bottom: 0;
         z-index: 10;
+        gap: var(--space-sm);
+        display: flex;
+        align-items: center;
     }
 
     #chat-message-input {
         font-size: 16px !important; /* Предотвращает зум на iOS */
         min-height: 44px;
+        flex: 1;
+        padding: 0.75rem 1rem;
+    }
+
+    /* Кнопка отправки на мобильном */
+    .btn-send-message {
+        min-width: 48px;
+        min-height: 48px;
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary-gradient);
+        border: none;
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+    }
+
+    .btn-send-message:active {
+        transform: scale(0.95);
+    }
+
+    .btn-attach-file {
+        min-width: 48px;
+        min-height: 48px;
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+    }
+
+    .btn-attach-file:active {
+        transform: scale(0.95);
+        background: var(--bg-surface-hover);
+    }
+
+    /* Превью файла на мобильном */
+    .attached-file-preview {
+        padding: var(--space-sm) var(--space-md);
+        font-size: var(--fs-sm);
+        background: var(--bg-surface);
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-sm);
+    }
+
+    .attached-file-preview button {
+        min-width: 32px;
+        min-height: 32px;
+        padding: 0.4rem;
+        border-radius: 50%;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: var(--danger);
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .notifications-dropdown {
@@ -2425,7 +2518,45 @@ input[type="number"] {
 #custom-fields {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-lg);
+}
+
+#product-university,
+#product-teacher {
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    transition: all var(--transition-fast);
+    width: 100%;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a855f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    padding-right: 2.5rem;
+}
+
+#product-university:focus,
+#product-teacher:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+#product-university optgroup {
+    font-weight: 700;
+    font-style: normal;
+    color: var(--primary);
+    background: var(--bg-surface);
+}
+
+#product-university option {
+    font-weight: 400;
+    padding: var(--space-xs) var(--space-sm);
 }
 
 /* inline-стили из JS переопределяются через !important в JS */
