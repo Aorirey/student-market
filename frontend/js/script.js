@@ -399,7 +399,7 @@ function openTab(tabName) {
     const select = document.getElementById(`select-${tabName}`);
     if (select) {
         select.value = 'all';
-        renderProducts(tabName, 'all');
+        renderProducts(tabName, 'all', 'all', '', '');
     }
 }
 
@@ -495,7 +495,46 @@ function switchAdminTab(type) {
 // ==================== ТОВАРЫ ====================
 
 // Отрисовка товаров
-async function renderProducts(category, filterDiscipline) {
+// Обновление списка университетов в фильтрах
+function updateUniversityFilters() {
+    const categories = ['practices', 'labs', 'courses'];
+    categories.forEach(category => {
+        const select = document.getElementById(`select-university-${category}`);
+        if (!select) return;
+
+        // Сохраняем текущее значение
+        const currentValue = select.value;
+
+        // Очищаем опции кроме "Все университеты"
+        select.innerHTML = '<option value="all">Все университеты</option>';
+
+        // Получаем уникальные университеты из товаров
+        const uniqueUniversities = new Set();
+        document.querySelectorAll(`[data-category="${category}"]`).forEach(card => {
+            const infoElements = card.querySelectorAll('.card-info');
+            infoElements.forEach(el => {
+                if (el.textContent && !el.textContent.includes('Преподаватель') && !el.textContent.includes('Срок')) {
+                    uniqueUniversities.add(el.textContent.trim());
+                }
+            });
+        });
+
+        // Добавляем университеты в select
+        uniqueUniversities.forEach(uni => {
+            const option = document.createElement('option');
+            option.value = uni;
+            option.textContent = uni;
+            select.appendChild(option);
+        });
+
+        // Восстанавливаем выбранное значение если оно есть
+        if (currentValue && [...select.options].some(opt => opt.value === currentValue)) {
+            select.value = currentValue;
+        }
+    });
+}
+
+async function renderProducts(category, filterDiscipline, filterUniversity, filterTeacher, searchText) {
     const grid = document.getElementById(`grid-${category}`);
     if (!grid) return;
 
@@ -516,8 +555,28 @@ async function renderProducts(category, filterDiscipline) {
         }
 
         items.forEach(item => {
-            if (filterDiscipline !== 'all' && item.discipline !== filterDiscipline) {
+            // Фильтр по дисциплине
+            if (filterDiscipline && filterDiscipline !== 'all' && item.discipline !== filterDiscipline) {
                 return;
+            }
+
+            // Фильтр по университету
+            if (filterUniversity && filterUniversity !== 'all' && item.university !== filterUniversity) {
+                return;
+            }
+
+            // Фильтр по преподавателю
+            if (filterTeacher && filterTeacher.trim() && !item.teacher?.toLowerCase().includes(filterTeacher.toLowerCase())) {
+                return;
+            }
+
+            // Поиск по названию, дисциплине, университету, преподавателю
+            if (searchText && searchText.trim()) {
+                const query = searchText.toLowerCase().trim();
+                const haystack = `${item.title} ${item.discipline} ${item.university || ''} ${item.teacher || ''}`.toLowerCase();
+                if (!haystack.includes(query)) {
+                    return;
+                }
             }
 
             const card = document.createElement('div');
@@ -600,6 +659,9 @@ async function renderProducts(category, filterDiscipline) {
             card.appendChild(footer);
             grid.appendChild(card);
         });
+
+        // Обновляем фильтры по университетам после рендера
+        updateUniversityFilters();
     } catch (error) {
         console.error('Ошибка загрузки товаров:', error);
         grid.innerHTML = '<p style="color: var(--text-secondary);">Ошибка загрузки товаров</p>';
@@ -608,9 +670,11 @@ async function renderProducts(category, filterDiscipline) {
 
 // Фильтрация
 function filterProducts(category) {
-    const select = document.getElementById(`select-${category}`);
-    const value = select.value;
-    renderProducts(category, value);
+    const discipline = document.getElementById(`select-${category}`)?.value || 'all';
+    const university = document.getElementById(`select-university-${category}`)?.value || 'all';
+    const teacher = document.getElementById(`input-teacher-${category}`)?.value || '';
+    const search = document.getElementById(`search-${category}`)?.value || '';
+    renderProducts(category, discipline, university, teacher, search);
 }
 
 // Фильтрация индивидуальных запросов
@@ -1029,9 +1093,9 @@ async function deleteProduct(productId) {
 
         showToast('Успешно', 'Товар удалён', 'success');
         loadCabinetData();
-        renderProducts('practices', 'all');
-        renderProducts('labs', 'all');
-        renderProducts('courses', 'all');
+        renderProducts('practices', 'all', 'all', '', '');
+        renderProducts('labs', 'all', 'all', '', '');
+        renderProducts('courses', 'all', 'all', '', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -1693,9 +1757,9 @@ async function approveProduct(productId) {
 
         showToast('Успешно', 'Товар одобрен', 'success');
         loadAdminData();
-        renderProducts('practices', 'all');
-        renderProducts('labs', 'all');
-        renderProducts('courses', 'all');
+        renderProducts('practices', 'all', 'all', '', '');
+        renderProducts('labs', 'all', 'all', '', '');
+        renderProducts('courses', 'all', 'all', '', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -1716,9 +1780,9 @@ async function rejectProduct(productId) {
 
         showToast('Информация', 'Товар отклонён', 'info');
         loadAdminData();
-        renderProducts('practices', 'all');
-        renderProducts('labs', 'all');
-        renderProducts('courses', 'all');
+        renderProducts('practices', 'all', 'all', '', '');
+        renderProducts('labs', 'all', 'all', '', '');
+        renderProducts('courses', 'all', 'all', '', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -2668,6 +2732,14 @@ function setupEventListeners() {
             return;
         }
 
+        // Обработчик изменения фильтра по университету
+        const universityFilter = event.target.closest('[data-filter-university]');
+        if (universityFilter) {
+            const category = universityFilter.dataset.filterUniversity;
+            filterProducts(category);
+            return;
+        }
+
         const toggleType = event.target.closest('[data-toggle-product-type]');
         if (toggleType) {
             toggleProductType();
@@ -2676,6 +2748,23 @@ function setupEventListeners() {
         const chatFileInput = event.target.closest('#chat-file-input');
         if (chatFileInput) {
             handleChatFileSelect(event);
+        }
+    });
+
+    // Обработчик ввода в поиск и поле преподавателя
+    document.addEventListener('input', function(event) {
+        const searchInput = event.target.closest('[data-filter-search]');
+        if (searchInput) {
+            const category = searchInput.dataset.filterSearch;
+            filterProducts(category);
+            return;
+        }
+
+        const teacherInput = event.target.closest('[data-filter-teacher]');
+        if (teacherInput) {
+            const category = teacherInput.dataset.filterTeacher;
+            filterProducts(category);
+            return;
         }
     });
 

@@ -55,6 +55,7 @@
         <!-- Вкладка 1: Практические работы -->
         <div id="practices" class="tab-content active">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-practices" placeholder="🔍 Поиск по названию..." data-filter-search="practices">
                 <span class="filter-label">Дисциплина:</span>
                 <select id="select-practices" data-filter="practices">
                     <option value="all">Все дисциплины</option>
@@ -62,6 +63,12 @@
                     <option value="Высшая математика">Высшая математика</option>
                     <option value="Физика">Физика</option>
                 </select>
+                <span class="filter-label">Университет:</span>
+                <select id="select-university-practices" data-filter-university="practices">
+                    <option value="all">Все университеты</option>
+                </select>
+                <span class="filter-label">Преподаватель:</span>
+                <input type="text" class="filter-input" id="input-teacher-practices" placeholder="ФИО преподавателя" data-filter-teacher="practices">
             </div>
             <div class="products-grid" id="grid-practices"></div>
         </div>
@@ -69,6 +76,7 @@
         <!-- Вкладка 2: Лабораторные работы -->
         <div id="labs" class="tab-content">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-labs" placeholder="🔍 Поиск по названию..." data-filter-search="labs">
                 <span class="filter-label">Дисциплина:</span>
                 <select id="select-labs" data-filter="labs">
                     <option value="all">Все дисциплины</option>
@@ -76,6 +84,12 @@
                     <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
                     <option value="Микропроцессорная техника">Микропроцессорная техника</option>
                 </select>
+                <span class="filter-label">Университет:</span>
+                <select id="select-university-labs" data-filter-university="labs">
+                    <option value="all">Все университеты</option>
+                </select>
+                <span class="filter-label">Преподаватель:</span>
+                <input type="text" class="filter-input" id="input-teacher-labs" placeholder="ФИО преподавателя" data-filter-teacher="labs">
             </div>
             <div class="products-grid" id="grid-labs"></div>
         </div>
@@ -83,6 +97,7 @@
         <!-- Вкладка 3: Курсовые работы -->
         <div id="courses" class="tab-content">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-courses" placeholder="🔍 Поиск по названию..." data-filter-search="courses">
                 <span class="filter-label">Дисциплина:</span>
                 <select id="select-courses" data-filter="courses">
                     <option value="all">Все дисциплины</option>
@@ -90,6 +105,12 @@
                     <option value="Менеджмент">Менеджмент</option>
                     <option value="Разработка ПО">Разработка ПО</option>
                 </select>
+                <span class="filter-label">Университет:</span>
+                <select id="select-university-courses" data-filter-university="courses">
+                    <option value="all">Все университеты</option>
+                </select>
+                <span class="filter-label">Преподаватель:</span>
+                <input type="text" class="filter-input" id="input-teacher-courses" placeholder="ФИО преподавателя" data-filter-teacher="courses">
             </div>
             <div class="products-grid" id="grid-courses"></div>
         </div>
