@@ -499,6 +499,26 @@ main {
     flex-wrap: wrap;
 }
 
+.filter-section input.search-input,
+.filter-section input.filter-input {
+    flex: 1 1 180px;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    transition: all var(--transition-fast);
+    min-width: 150px;
+}
+
+.filter-section input.search-input:focus,
+.filter-section input.filter-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 .filter-label {
     font-weight: 500;
     font-size: var(--fs-sm);

@@ -97,6 +97,7 @@
         <!-- Вкладка 1: Практические работы -->
         <div id="practices" class="tab-content active" role="tabpanel">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-practices" placeholder="🔍 Поиск по названию..." data-filter-search="practices" aria-label="Поиск по названию">
                 <label class="filter-label" for="select-practices">Дисциплина:</label>
                 <select id="select-practices" data-filter="practices" aria-label="Фильтр по дисциплине">
                     <option value="all">Все дисциплины</option>
@@ -104,6 +105,12 @@
                     <option value="Высшая математика">Высшая математика</option>
                     <option value="Физика">Физика</option>
                 </select>
+                <label class="filter-label" for="select-university-practices">Университет:</label>
+                <select id="select-university-practices" data-filter-university="practices" aria-label="Фильтр по университету">
+                    <option value="all">Все университеты</option>
+                </select>
+                <label class="filter-label" for="input-teacher-practices">Преподаватель:</label>
+                <input type="text" class="filter-input" id="input-teacher-practices" placeholder="ФИО преподавателя" data-filter-teacher="practices" aria-label="Фильтр по преподавателю">
             </div>
             <div class="products-grid" id="grid-practices" aria-live="polite"></div>
         </div>
@@ -111,6 +118,7 @@
         <!-- Вкладка 2: Лабораторные работы -->
         <div id="labs" class="tab-content" role="tabpanel">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-labs" placeholder="🔍 Поиск по названию..." data-filter-search="labs" aria-label="Поиск по названию">
                 <label class="filter-label" for="select-labs">Дисциплина:</label>
                 <select id="select-labs" data-filter="labs" aria-label="Фильтр по дисциплине">
                     <option value="all">Все дисциплины</option>
@@ -118,6 +126,12 @@
                     <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
                     <option value="Микропроцессорная техника">Микропроцессорная техника</option>
                 </select>
+                <label class="filter-label" for="select-university-labs">Университет:</label>
+                <select id="select-university-labs" data-filter-university="labs" aria-label="Фильтр по университету">
+                    <option value="all">Все университеты</option>
+                </select>
+                <label class="filter-label" for="input-teacher-labs">Преподаватель:</label>
+                <input type="text" class="filter-input" id="input-teacher-labs" placeholder="ФИО преподавателя" data-filter-teacher="labs" aria-label="Фильтр по преподавателю">
             </div>
             <div class="products-grid" id="grid-labs" aria-live="polite"></div>
         </div>
@@ -125,6 +139,7 @@
         <!-- Вкладка 3: Курсовые работы -->
         <div id="courses" class="tab-content" role="tabpanel">
             <div class="filter-section">
+                <input type="text" class="search-input" id="search-courses" placeholder="🔍 Поиск по названию..." data-filter-search="courses" aria-label="Поиск по названию">
                 <label class="filter-label" for="select-courses">Дисциплина:</label>
                 <select id="select-courses" data-filter="courses" aria-label="Фильтр по дисциплине">
                     <option value="all">Все дисциплины</option>
@@ -132,6 +147,12 @@
                     <option value="Менеджмент">Менеджмент</option>
                     <option value="Разработка ПО">Разработка ПО</option>
                 </select>
+                <label class="filter-label" for="select-university-courses">Университет:</label>
+                <select id="select-university-courses" data-filter-university="courses" aria-label="Фильтр по университету">
+                    <option value="all">Все университеты</option>
+                </select>
+                <label class="filter-label" for="input-teacher-courses">Преподаватель:</label>
+                <input type="text" class="filter-input" id="input-teacher-courses" placeholder="ФИО преподавателя" data-filter-teacher="courses" aria-label="Фильтр по преподавателю">
             </div>
             <div class="products-grid" id="grid-courses" aria-live="polite"></div>
         </div>
