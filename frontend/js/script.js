@@ -576,14 +576,14 @@ async function renderProducts(category, filterDiscipline) {
             if (item.university) {
                 const universityEl = document.createElement('p');
                 universityEl.className = 'card-info';
-                universityEl.textContent = `🏛️ ${item.university}`;
+                universityEl.textContent = item.university;
                 contentDiv.appendChild(universityEl);
             }
 
             if (item.teacher) {
                 const teacherEl = document.createElement('p');
                 teacherEl.className = 'card-info';
-                teacherEl.textContent = `👨‍ ${item.teacher}`;
+                teacherEl.textContent = `Преподаватель: ${item.teacher}`;
                 contentDiv.appendChild(teacherEl);
             }
 
@@ -592,7 +592,7 @@ async function renderProducts(category, filterDiscipline) {
                 const deadlineStr = deadlineDate.toLocaleDateString('ru-RU');
                 const deadlineEl = document.createElement('p');
                 deadlineEl.className = 'card-info';
-                deadlineEl.textContent = `📅 Срок сдачи: ${deadlineStr}`;
+                deadlineEl.textContent = `Срок сдачи: ${deadlineStr}`;
                 contentDiv.appendChild(deadlineEl);
             }
 
