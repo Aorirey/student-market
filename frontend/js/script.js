@@ -495,41 +495,61 @@ function switchAdminTab(type) {
 // ==================== ТОВАРЫ ====================
 
 // Отрисовка товаров
-// Обновление списка университетов в фильтрах
+// Обновление списка университетов и преподавателей в фильтрах
 function updateUniversityFilters() {
     const categories = ['practices', 'labs', 'courses'];
     categories.forEach(category => {
-        const select = document.getElementById(`select-university-${category}`);
-        if (!select) return;
-
-        // Сохраняем текущее значение
-        const currentValue = select.value;
-
-        // Очищаем опции кроме "Все университеты"
-        select.innerHTML = '<option value="all">Все университеты</option>';
-
-        // Получаем уникальные университеты из товаров
-        const uniqueUniversities = new Set();
-        document.querySelectorAll(`[data-category="${category}"]`).forEach(card => {
-            const infoElements = card.querySelectorAll('.card-info');
-            infoElements.forEach(el => {
-                if (el.textContent && !el.textContent.includes('Преподаватель') && !el.textContent.includes('Срок')) {
-                    uniqueUniversities.add(el.textContent.trim());
-                }
+        // Обновляем университеты
+        const uniSelect = document.getElementById(`select-university-${category}`);
+        if (uniSelect) {
+            const currentUniValue = uniSelect.value;
+            uniSelect.innerHTML = '<option value="all">Все университеты</option>';
+            const uniqueUniversities = new Set();
+            document.querySelectorAll(`[data-category="${category}"]`).forEach(card => {
+                const infoElements = card.querySelectorAll('.card-info');
+                infoElements.forEach(el => {
+                    if (el.textContent && !el.textContent.includes('Преподаватель') && !el.textContent.includes('Срок')) {
+                        uniqueUniversities.add(el.textContent.trim());
+                    }
+                });
             });
-        });
+            uniqueUniversities.forEach(uni => {
+                const option = document.createElement('option');
+                option.value = uni;
+                option.textContent = uni;
+                uniSelect.appendChild(option);
+            });
+            if (currentUniValue && [...uniSelect.options].some(opt => opt.value === currentUniValue)) {
+                uniSelect.value = currentUniValue;
+            }
+        }
 
-        // Добавляем университеты в select
-        uniqueUniversities.forEach(uni => {
-            const option = document.createElement('option');
-            option.value = uni;
-            option.textContent = uni;
-            select.appendChild(option);
-        });
-
-        // Восстанавливаем выбранное значение если оно есть
-        if (currentValue && [...select.options].some(opt => opt.value === currentValue)) {
-            select.value = currentValue;
+        // Обновляем преподавателей
+        const teacherSelect = document.getElementById(`select-teacher-${category}`);
+        if (teacherSelect) {
+            const currentTeacherValue = teacherSelect.value;
+            teacherSelect.innerHTML = '<option value="all">Все преподаватели</option>';
+            const uniqueTeachers = new Set();
+            document.querySelectorAll(`[data-category="${category}"]`).forEach(card => {
+                const infoElements = card.querySelectorAll('.card-info');
+                infoElements.forEach(el => {
+                    if (el.textContent && el.textContent.includes('Преподаватель:')) {
+                        const teacherName = el.textContent.replace('Преподаватель:', '').trim();
+                        if (teacherName) {
+                            uniqueTeachers.add(teacherName);
+                        }
+                    }
+                });
+            });
+            uniqueTeachers.forEach(teacher => {
+                const option = document.createElement('option');
+                option.value = teacher;
+                option.textContent = teacher;
+                teacherSelect.appendChild(option);
+            });
+            if (currentTeacherValue && [...teacherSelect.options].some(opt => opt.value === currentTeacherValue)) {
+                teacherSelect.value = currentTeacherValue;
+            }
         }
     });
 }
@@ -672,7 +692,7 @@ async function renderProducts(category, filterDiscipline, filterUniversity, filt
 function filterProducts(category) {
     const discipline = document.getElementById(`select-${category}`)?.value || 'all';
     const university = document.getElementById(`select-university-${category}`)?.value || 'all';
-    const teacher = document.getElementById(`input-teacher-${category}`)?.value || '';
+    const teacher = document.getElementById(`select-teacher-${category}`)?.value || 'all';
     const search = document.getElementById(`search-${category}`)?.value || '';
     renderProducts(category, discipline, university, teacher, search);
 }
@@ -2740,6 +2760,14 @@ function setupEventListeners() {
             return;
         }
 
+        // Обработчик изменения фильтра по преподавателю
+        const teacherFilter = event.target.closest('[data-filter-teacher]');
+        if (teacherFilter) {
+            const category = teacherFilter.dataset.filterTeacher;
+            filterProducts(category);
+            return;
+        }
+
         const toggleType = event.target.closest('[data-toggle-product-type]');
         if (toggleType) {
             toggleProductType();
@@ -2751,18 +2779,11 @@ function setupEventListeners() {
         }
     });
 
-    // Обработчик ввода в поиск и поле преподавателя
+    // Обработчик ввода в поиск
     document.addEventListener('input', function(event) {
         const searchInput = event.target.closest('[data-filter-search]');
         if (searchInput) {
             const category = searchInput.dataset.filterSearch;
-            filterProducts(category);
-            return;
-        }
-
-        const teacherInput = event.target.closest('[data-filter-teacher]');
-        if (teacherInput) {
-            const category = teacherInput.dataset.filterTeacher;
             filterProducts(category);
             return;
         }
