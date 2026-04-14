@@ -2950,10 +2950,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (registerForm) {
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const name = document.getElementById('register-name').value;
             const login = document.getElementById('register-login').value;
             const password = document.getElementById('register-password').value;
+            const consent = document.getElementById('register-consent');
+
+            // Проверка согласия с политикой конфиденциальности
+            if (!consent || !consent.checked) {
+                showToast('Ошибка', 'Для регистрации необходимо согласие с Политикой конфиденциальности', 'error');
+                return;
+            }
 
             if (!name || !login || !password) {
                 showToast('Ошибка', 'Заполните все поля!', 'error');
@@ -3009,4 +3016,129 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // ==================== COOKIES ДЛЯ ФОРМ ====================
+
+    // Функция установки cookie
+    function setCookie(name, value, days) {
+        const expires = new Date(Date.now() + days * 864e5).toUTCString();
+        document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+    }
+
+    // Функция получения cookie
+    function getCookie(name) {
+        return document.cookie.split('; ').reduce((r, v) => {
+            const parts = v.split('=');
+            return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+        }, '');
+    }
+
+    // Сохранение данных формы индивидуального запроса
+    const customFields = ['custom-title', 'custom-university', 'custom-teacher', 'custom-description', 'custom-budget', 'custom-deadline'];
+    customFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+
+        // Восстановление данных из cookie при загрузке
+        const savedValue = getCookie(fieldId);
+        if (savedValue) {
+            field.value = savedValue;
+        }
+
+        // Сохранение данных в cookie при изменении
+        field.addEventListener('input', () => {
+            setCookie(fieldId, field.value, 30); // 30 дней
+        });
+        field.addEventListener('change', () => {
+            setCookie(fieldId, field.value, 30);
+        });
+    });
+
+    // Сохранение данных формы готового товара
+    const productFields = ['product-title', 'product-university', 'product-teacher', 'product-price'];
+    productFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+
+        // Восстановление данных из cookie при загрузке
+        const savedValue = getCookie(fieldId);
+        if (savedValue) {
+            field.value = savedValue;
+        }
+
+        // Сохранение данных в cookie при изменении
+        field.addEventListener('input', () => {
+            setCookie(fieldId, field.value, 30);
+        });
+        field.addEventListener('change', () => {
+            setCookie(fieldId, field.value, 30);
+        });
+    });
+
+    // ==================== ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ ====================
+
+    // Открытие модального окна политики конфиденциальности
+    function openPrivacyPolicy() {
+        const modal = document.getElementById('privacy-policy-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    // Закрытие модального окна политики конфиденциальности
+    function closePrivacyPolicy() {
+        const modal = document.getElementById('privacy-policy-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+    }
+
+    // Глобальные функции для обработки событий
+    window.openPrivacyPolicy = openPrivacyPolicy;
+    window.closePrivacyPolicy = closePrivacyPolicy;
+
+    // Обработчик клика на кнопку политики конфиденциальности в футере
+    document.addEventListener('click', function(event) {
+        const privacyBtn = event.target.closest('[data-action="open-privacy-policy"]');
+        if (privacyBtn) {
+            event.preventDefault();
+            openPrivacyPolicy();
+            return;
+        }
+
+        const closePrivacyBtn = event.target.closest('[data-action="close-privacy-policy"]');
+        if (closePrivacyBtn) {
+            event.preventDefault();
+            closePrivacyPolicy();
+            return;
+        }
+
+        // Открытие политики конфиденциальности из формы регистрации
+        const privacyFromRegister = event.target.closest('[data-action="open-privacy-policy-from-register"]');
+        if (privacyFromRegister) {
+            event.preventDefault();
+            openPrivacyPolicy();
+            return;
+        }
+    });
+
+    // Закрытие модального окна при клике на фон
+    document.addEventListener('click', function(event) {
+        const privacyModal = document.getElementById('privacy-policy-modal');
+        if (event.target === privacyModal) {
+            closePrivacyPolicy();
+        }
+    });
+
+    // Закрытие по Escape
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            const privacyModal = document.getElementById('privacy-policy-modal');
+            if (privacyModal && privacyModal.style.display === 'flex') {
+                closePrivacyPolicy();
+            }
+        }
+    });
 });
