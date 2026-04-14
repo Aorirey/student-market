@@ -100,9 +100,9 @@ async function checkAuth() {
         // Загружаем уведомления
         loadNotifications();
 
-        // Автообновление уведомлений каждые 5 секунд
+        // Автообновление уведомлений каждые 30 секунд
         if (notificationInterval) clearInterval(notificationInterval);
-        notificationInterval = setInterval(loadNotifications, 5000);
+        notificationInterval = setInterval(loadNotifications, 30000); // 30 секунд вместо 5
     } else {
         authButtons.style.display = 'flex';
         userMenu.style.display = 'none';
