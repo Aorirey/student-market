@@ -1549,8 +1549,8 @@ footer {
 .consent-label span {
     flex: 1;
     min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
 }
 
 .consent-label input[type="checkbox"] {
