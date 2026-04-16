@@ -1577,8 +1577,21 @@ footer {
 }
 
 /* Модальное окно политики конфиденциальности */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: var(--space-lg);
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 1100;
+}
+
 .privacy-policy-modal {
-    max-width: 800px;
+    width: min(800px, 100%);
     max-height: 85vh;
     overflow: hidden;
     display: flex;
@@ -1589,6 +1602,27 @@ footer {
     overflow-y: auto;
     padding: var(--space-lg);
     flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) rgba(255, 255, 255, 0.08);
+}
+
+.privacy-policy-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.privacy-policy-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+}
+
+.privacy-policy-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary-light), var(--primary));
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.privacy-policy-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #c084fc, #a855f7);
 }
 
 .privacy-policy-content h3 {
