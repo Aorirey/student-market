@@ -647,6 +647,21 @@ select:disabled {
     gap: var(--space-lg);
 }
 
+/* Матовый фон под список товаров */
+#grid-practices,
+#grid-labs,
+#grid-courses {
+    background: rgba(24, 22, 40, 0.46);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    backdrop-filter: blur(16px) saturate(1.3);
+    -webkit-backdrop-filter: blur(16px) saturate(1.3);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    min-height: 220px;
+    align-content: start;
+}
+
 /* ============================================
    КАРТОЧКА ТОВАРА
    ============================================ */
@@ -1583,7 +1598,7 @@ footer {
     display: none;
     justify-content: center;
     align-items: center;
-    padding: var(--space-lg);
+    padding: 12px;
     background: rgba(0, 0, 0, 0.72);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -1592,10 +1607,18 @@ footer {
 
 .privacy-policy-modal {
     width: min(800px, 100%);
-    max-height: 85vh;
+    max-height: calc(100vh - 24px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
+    background: var(--bg-glass);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    animation: modalFadeIn 0.3s ease;
 }
 
 .privacy-policy-content {
@@ -2751,6 +2774,108 @@ input[type="number"] {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.custom-university-select {
+    position: relative;
+    width: 100%;
+}
+
+.custom-university-trigger {
+    width: 100%;
+    padding: 1rem 2.5rem 1rem 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    text-align: left;
+    font-size: var(--fs-sm);
+    line-height: 1.4;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.custom-university-trigger::after {
+    content: '';
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a855f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 12px;
+    transition: transform var(--transition-fast);
+}
+
+.custom-university-select.open .custom-university-trigger::after {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.custom-university-trigger:hover {
+    border-color: var(--border-hover);
+}
+
+.custom-university-trigger:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.custom-university-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 30;
+    display: none;
+    padding: 0.35rem 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) rgba(255, 255, 255, 0.08);
+}
+
+.custom-university-menu::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-university-menu::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+}
+
+.custom-university-menu::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary-light), var(--primary));
+    border-radius: 999px;
+}
+
+.custom-university-select.open .custom-university-menu {
+    display: block;
+}
+
+.custom-university-option {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text-main);
+    text-align: left;
+    font-size: var(--fs-sm);
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.custom-university-option:hover,
+.custom-university-option.active {
+    background: rgba(168, 85, 247, 0.18);
+    color: #fff;
 }
 
 #custom-university,

@@ -70,6 +70,96 @@ function formatMoscowDate(dateStr) {
     });
 }
 
+// Кастомный select для большого списка университетов в форме добавления товара
+function initProductUniversityCustomSelect() {
+    const nativeSelect = document.getElementById('product-university');
+    if (!nativeSelect || nativeSelect.dataset.customized === 'true') return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'custom-university-select';
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute('role', 'combobox');
+    wrapper.setAttribute('aria-expanded', 'false');
+    wrapper.setAttribute('aria-label', 'Выбор университета');
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-university-trigger';
+
+    const triggerText = document.createElement('span');
+    triggerText.className = 'custom-university-trigger-text';
+    trigger.appendChild(triggerText);
+
+    const menu = document.createElement('div');
+    menu.className = 'custom-university-menu';
+
+    const selectedOption = nativeSelect.options[nativeSelect.selectedIndex] || nativeSelect.options[0];
+    triggerText.textContent = selectedOption ? selectedOption.textContent : 'Выберите университет';
+
+    Array.from(nativeSelect.options).forEach((option, index) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'custom-university-option';
+        item.textContent = option.textContent;
+        item.dataset.value = option.value;
+        item.dataset.index = String(index);
+
+        if (option.value === nativeSelect.value) {
+            item.classList.add('active');
+        }
+
+        item.addEventListener('click', () => {
+            nativeSelect.value = option.value;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            triggerText.textContent = option.textContent;
+
+            menu.querySelectorAll('.custom-university-option.active').forEach(activeEl => {
+                activeEl.classList.remove('active');
+            });
+            item.classList.add('active');
+
+            wrapper.classList.remove('open');
+            wrapper.setAttribute('aria-expanded', 'false');
+        });
+
+        menu.appendChild(item);
+    });
+
+    trigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const shouldOpen = !wrapper.classList.contains('open');
+        wrapper.classList.toggle('open', shouldOpen);
+        wrapper.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    });
+
+    nativeSelect.addEventListener('change', () => {
+        const selected = nativeSelect.options[nativeSelect.selectedIndex];
+        triggerText.textContent = selected ? selected.textContent : 'Выберите университет';
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!wrapper.contains(event.target)) {
+            wrapper.classList.remove('open');
+            wrapper.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    wrapper.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            wrapper.classList.remove('open');
+            wrapper.setAttribute('aria-expanded', 'false');
+            trigger.focus();
+        }
+    });
+
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(menu);
+
+    nativeSelect.style.display = 'none';
+    nativeSelect.dataset.customized = 'true';
+    nativeSelect.insertAdjacentElement('afterend', wrapper);
+}
+
 // Проверка авторизации
 async function checkAuth() {
     const authButtons = document.getElementById('auth-buttons');
@@ -3067,6 +3157,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             setCookie(fieldId, field.value, 30);
         });
     });
+
+    initProductUniversityCustomSelect();
 
     // ==================== ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ ====================
 
