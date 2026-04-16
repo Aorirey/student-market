@@ -2954,13 +2954,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const name = document.getElementById('register-name').value;
             const login = document.getElementById('register-login').value;
             const password = document.getElementById('register-password').value;
-            const consent = document.getElementById('register-consent');
-
-            // Проверка согласия с политикой конфиденциальности
-            if (!consent || !consent.checked) {
-                showToast('Ошибка', 'Для регистрации необходимо согласие с Политикой конфиденциальности', 'error');
-                return;
-            }
 
             if (!name || !login || !password) {
                 showToast('Ошибка', 'Заполните все поля!', 'error');

@@ -1553,6 +1553,13 @@ footer {
     word-break: normal;
 }
 
+.consent-text {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
 .consent-label input[type="checkbox"] {
     margin-top: 2px;
     accent-color: var(--primary);
