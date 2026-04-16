@@ -48,6 +48,116 @@ function isValidNumber(value, min = 1, max = 1000000) {
 
 // ==================== УТИЛИТЫ ====================
 
+// Cookie утилиты
+function setCookie(name, value, days) {
+    const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(JSON.stringify(value))}; expires=${expires}; path=/; SameSite=Strict; Secure`;
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) {
+            return JSON.parse(decodeURIComponent(c.substring(nameEQ.length, c.length)));
+        }
+    }
+    return null;
+}
+
+function deleteCookie(name) {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+}
+
+// Настройки приватности
+let privacySettings = {
+    rememberMe: true,
+    autoLogin: false,
+    notifications: true
+};
+
+// Загрузка настроек приватности из localStorage
+function loadPrivacySettings() {
+    const savedSettings = localStorage.getItem('studmarket_privacy');
+    if (savedSettings) {
+        privacySettings = JSON.parse(savedSettings);
+    }
+}
+
+// Сохранение настроек приватности
+function savePrivacySettings() {
+    localStorage.setItem('studmarket_privacy', JSON.stringify(privacySettings));
+}
+
+// Открыть модальное окно настроек приватности
+function openPrivacyModal() {
+    const modal = document.getElementById('privacy-modal');
+    if (!modal) return;
+
+    // Устанавливаем значения в форму
+    document.getElementById('remember-me').checked = privacySettings.rememberMe;
+    document.getElementById('auto-login').checked = privacySettings.autoLogin;
+    document.getElementById('notifications').checked = privacySettings.notifications;
+
+    modal.classList.add('active');
+}
+
+// Закрыть модальное окно настроек приватности
+function closePrivacyModal() {
+    const modal = document.getElementById('privacy-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+// Сохранить настройки приватности
+function savePrivacySettingsForm() {
+    privacySettings.rememberMe = document.getElementById('remember-me').checked;
+    privacySettings.autoLogin = document.getElementById('auto-login').checked;
+    privacySettings.notifications = document.getElementById('notifications').checked;
+
+    savePrivacySettings();
+
+    closePrivacyModal();
+    showToast('Успешно', 'Настройки сохранены', 'success');
+}
+
+// Обновить cookie на основе настроек приватности
+async function updateSessionCookie() {
+    if (privacySettings.rememberMe && currentUser) {
+        const encryptedData = await encryptData(currentUser);
+        setCookie('studmarket_session', encryptedData, 7); // 7 дней
+    } else {
+        deleteCookie('studmarket_session');
+    }
+}
+
+// Шифрование данных пользователя для cookie
+async function encryptData(data, secretKey = 'studmarket2024') {
+    const text = JSON.stringify(data);
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const cipher = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        await crypto.subtle.importKey('raw', new TextEncoder().encode(secretKey), { name: 'AES-GCM' }, false, ['encrypt']),
+        new TextEncoder().encode(text)
+    );
+    return iv + '.' + Array.from(new Uint8Array(cipher)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function decryptData(encrypted, secretKey = 'studmarket2024') {
+    const [ivText, encryptedText] = encrypted.split('.');
+    const iv = new Uint8Array(ivText.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const encryptedBytes = new Uint8Array(encryptedText.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        await crypto.subtle.importKey('raw', new TextEncoder().encode(secretKey), { name: 'AES-GCM' }, false, ['decrypt']),
+        encryptedBytes
+    );
+    return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
 // Форматирование даты в московском времени
 function formatMoscowTime(dateStr) {
     if (!dateStr) return '';
@@ -214,6 +324,10 @@ async function login() {
         currentUser = data;
         sessionStorage.setItem('currentUser', JSON.stringify(data));
 
+        // Сохраняем данные в cookie с шифрованием
+        const encryptedData = await encryptData(data);
+        setCookie('studmarket_session', encryptedData, 7); // 7 дней
+
         // Очистка формы
         document.getElementById('login-login').value = '';
         document.getElementById('login-password').value = '';
@@ -292,6 +406,7 @@ async function loginWithVK() {
 function logout() {
     currentUser = null;
     sessionStorage.removeItem('currentUser');
+    deleteCookie('studmarket_session'); // Удаляем cookie
     checkAuth();
     openTab('practices');
     showToast('Информация', 'Вы вышли из аккаунта!', 'info');
@@ -2844,10 +2959,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Восстанавливаем сессию
+// Восстанавливаем сессию
     const savedUser = sessionStorage.getItem('currentUser');
     if (savedUser) {
         currentUser = JSON.parse(savedUser);
+    } else {
+        // Проверяем cookie
+        const cookieSession = getCookie('studmarket_session');
+        if (cookieSession) {
+            try {
+                const decryptedData = await decryptData(cookieSession);
+                currentUser = decryptedData;
+                sessionStorage.setItem('currentUser', JSON.stringify(decryptedData));
+                // Загружаем уведомления после восстановления сессии
+                loadNotifications();
+            } catch (error) {
+                console.error('Ошибка расшифровки cookie:', error);
+                deleteCookie('studmarket_session');
+            }
+        }
     }
 
     checkAuth();
