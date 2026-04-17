@@ -624,11 +624,367 @@ main {
     color: var(--text-secondary);
 }
 
+/* Скрытый нативный select (кастомные и combobox-фильтры) */
+select.ui-custom-select__native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Кастомный select (формы и фильтр «Ещё») — совместимо с frontend/js/script.js */
+.ui-custom-select {
+    position: relative;
+    display: block;
+    width: 100%;
+    z-index: 5;
+}
+
+.ui-custom-select--compact {
+    width: auto;
+    flex: 0 1 11rem;
+    min-width: 5.5rem;
+    max-width: 12.5rem;
+    z-index: 6;
+}
+
+.ui-custom-select.open {
+    z-index: 80;
+}
+
+.ui-custom-select__trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    width: 100%;
+    min-height: 2.1rem;
+    padding: 0.35rem 0.55rem 0.35rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-glass);
+    color: var(--text-main);
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    line-height: 1.25;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    text-align: left;
+}
+
+.ui-custom-select--compact .ui-custom-select__trigger {
+    min-height: 1.95rem;
+    padding: 0.28rem 0.45rem 0.28rem 0.5rem;
+    font-size: 0.72rem;
+    border-radius: var(--radius-sm);
+}
+
+.ui-custom-select__value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ui-custom-select__chevron {
+    flex-shrink: 0;
+    font-size: 0.55rem;
+    opacity: 0.75;
+    margin-top: 1px;
+}
+
+.ui-custom-select__trigger:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-surface-hover);
+}
+
+.ui-custom-select.open .ui-custom-select__trigger {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.ui-custom-select__menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    max-height: min(240px, 42vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0.3rem 0;
+    margin: 0;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    background: rgba(18, 18, 22, 0.82);
+    backdrop-filter: blur(28px) saturate(1.2);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hover) transparent;
+}
+
+.ui-custom-select__menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.ui-custom-select__menu::-webkit-scrollbar-thumb {
+    background: var(--border-hover);
+    border-radius: var(--radius-pill);
+}
+
+html[data-theme="light"] .ui-custom-select__menu {
+    background: rgba(248, 248, 250, 0.92);
+    backdrop-filter: blur(24px) saturate(1.1);
+    -webkit-backdrop-filter: blur(24px) saturate(1.1);
+}
+
+.ui-custom-select.open .ui-custom-select__menu {
+    display: block;
+}
+
+.ui-custom-select__group-label {
+    padding: 0.35rem 0.65rem 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.ui-custom-select__option {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text-main);
+    text-align: left;
+    font-size: var(--fs-xs);
+    line-height: 1.35;
+    padding: 0.4rem 0.65rem;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.ui-custom-select--compact .ui-custom-select__option {
+    font-size: 0.72rem;
+    padding: 0.32rem 0.5rem;
+}
+
+.ui-custom-select__option:hover,
+.ui-custom-select__option:focus-visible {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.ui-custom-select__option.is-selected {
+    background: rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+}
+
+.modal .ui-custom-select.open {
+    z-index: 1400;
+}
+
+.filter-field .ui-custom-select {
+    min-width: 0;
+}
+
+/* Поисковые combobox в фильтрах каталога */
+.ui-combobox {
+    position: relative;
+    display: block;
+    width: 100%;
+    z-index: 5;
+}
+
+.ui-combobox--compact {
+    width: auto;
+    flex: 0 1 11rem;
+    min-width: 5.5rem;
+    max-width: 12.5rem;
+    z-index: 6;
+}
+
+.ui-combobox.open {
+    z-index: 80;
+}
+
+.ui-combobox__control {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    min-height: 1.95rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ui-combobox.open .ui-combobox__control {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.ui-combobox__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    margin: 0;
+    padding: 0.28rem 0.35rem 0.28rem 0.5rem;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 0.72rem;
+    font-weight: 500;
+    font-family: inherit;
+    line-height: 1.35;
+    outline: none;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.ui-combobox__clear {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 1.65rem;
+    border: 0;
+    border-left: 1px solid var(--border);
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.ui-combobox__clear:hover {
+    color: var(--danger);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.ui-combobox__toggle {
+    flex-shrink: 0;
+    align-self: stretch;
+    width: 1.55rem;
+    border: 0;
+    border-left: 1px solid var(--border);
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.ui-combobox__toggle:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.ui-combobox__chevron {
+    font-size: 0.55rem;
+    opacity: 0.75;
+    pointer-events: none;
+}
+
+.ui-combobox__menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    max-height: min(240px, 42vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0.3rem 0;
+    margin: 0;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    background: rgba(18, 18, 22, 0.82);
+    backdrop-filter: blur(28px) saturate(1.2);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-hover) transparent;
+}
+
+.ui-combobox__menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.ui-combobox__menu::-webkit-scrollbar-thumb {
+    background: var(--border-hover);
+    border-radius: var(--radius-pill);
+}
+
+html[data-theme="light"] .ui-combobox__menu {
+    background: rgba(248, 248, 250, 0.92);
+    backdrop-filter: blur(24px) saturate(1.1);
+    -webkit-backdrop-filter: blur(24px) saturate(1.1);
+}
+
+.ui-combobox.open .ui-combobox__menu {
+    display: block;
+}
+
+.ui-combobox__option {
+    padding: 0.32rem 0.5rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.ui-combobox__option:hover,
+.ui-combobox__option:focus-visible {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.ui-combobox__option.is-selected {
+    background: rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+}
+
+.ui-combobox__empty {
+    padding: 0.45rem 0.5rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-style: italic;
+    pointer-events: none;
+}
+
+.filter-field .ui-combobox {
+    min-width: 0;
+}
+
 /* ============================================
    ВЫПАДАЮЩИЕ МЕНЮ (select)
    ============================================ */
 
-select {
+select:not(.ui-custom-select__native) {
     padding: 0.8rem 2.5rem 0.8rem 1.2rem;
     border-radius: var(--radius-md);
     border: 1.5px solid var(--border);
@@ -654,14 +1010,14 @@ select {
     letter-spacing: 0.01em;
 }
 
-select:hover {
+select:not(.ui-custom-select__native):hover {
     border-color: var(--primary);
     background-color: var(--bg-surface-hover);
     box-shadow: var(--shadow-md), 0 0 20px rgba(168, 85, 247, 0.2);
     transform: translateY(-1px);
 }
 
-select:focus {
+select:not(.ui-custom-select__native):focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--accent-glow), 0 0 25px rgba(168, 85, 247, 0.35), var(--shadow-md);
@@ -679,19 +1035,19 @@ select:focus {
 }
 
 /* Disabled select */
-select:disabled {
+select:not(.ui-custom-select__native):disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
 /* Select в фильтрах */
-.filter-section select {
+.filter-section select:not(.ui-custom-select__native) {
     min-width: 240px;
 }
 
 /* Select в формах */
-.add-product-form select,
-.cabinet-info select {
+.add-product-form select:not(.ui-custom-select__native),
+.cabinet-info select:not(.ui-custom-select__native) {
     width: 100%;
     padding: 0.85rem 2.5rem 0.85rem 1.2rem;
     font-size: var(--fs-base);
@@ -701,14 +1057,14 @@ select:disabled {
     transition: all var(--transition-fast);
 }
 
-.add-product-form select:hover,
-.cabinet-info select:hover {
+.add-product-form select:not(.ui-custom-select__native):hover,
+.cabinet-info select:not(.ui-custom-select__native):hover {
     border-color: var(--border-hover);
     transform: none;
 }
 
-.add-product-form select:focus,
-.cabinet-info select:focus {
+.add-product-form select:not(.ui-custom-select__native):focus,
+.cabinet-info select:not(.ui-custom-select__native):focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--accent-glow);
     transform: none;
@@ -2607,15 +2963,21 @@ input[type="number"] {
     }
 
     /* Select на мобильных */
-    select {
+    select:not(.ui-custom-select__native) {
         min-width: unset;
         width: 100%;
         font-size: var(--fs-base);
         padding: 0.8rem 2.5rem 0.8rem 1rem;
     }
 
-    .filter-section select {
+    .filter-section select:not(.ui-custom-select__native) {
         min-width: unset;
+    }
+
+    .ui-custom-select--compact,
+    .ui-combobox--compact {
+        flex: 0 1 7.5rem;
+        max-width: 9.5rem;
     }
 
     /* Мобильные чаты - полноэкранный режим */

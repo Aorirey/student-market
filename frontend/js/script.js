@@ -93,94 +93,429 @@ function formatMoscowDate(dateStr) {
     });
 }
 
-// Кастомный select для большого списка университетов в форме добавления товара
-function initProductUniversityCustomSelect() {
-    const nativeSelect = document.getElementById('product-university');
-    if (!nativeSelect || nativeSelect.dataset.customized === 'true') return;
+// Закрыть все кастомные выпадающие списки (кроме optional — исключить из закрытия)
+function closeAllUiCustomSelects(exceptWrapper) {
+    document.querySelectorAll('.ui-custom-select.open').forEach((w) => {
+        if (exceptWrapper && w === exceptWrapper) return;
+        w.classList.remove('open');
+        const tr = w.querySelector('.ui-custom-select__trigger');
+        if (tr) tr.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function bindUiCustomSelectOutsideCloseOnce() {
+    if (window.__uiCustomSelectOutsideBound) return;
+    window.__uiCustomSelectOutsideBound = true;
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('.ui-custom-select')) {
+            closeAllUiCustomSelects(null);
+        }
+        if (!event.target.closest('.ui-combobox')) {
+            closeAllFilterComboboxes(null);
+        }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeAllUiCustomSelects(null);
+            closeAllFilterComboboxes(null);
+        }
+    });
+}
+
+/**
+ * Кастомный выпадающий список: нативный <select> остаётся для значения и совместимости с кодом.
+ * @param {HTMLSelectElement} nativeSelect
+ * @param {{ compact?: boolean }} options — compact: узкий триггер для панели фильтров категорий
+ */
+function initCustomSelect(nativeSelect, options = {}) {
+    if (!nativeSelect || nativeSelect.tagName !== 'SELECT' || nativeSelect.dataset.uiCustom === '1') return;
+
+    nativeSelect.dataset.uiCustom = '1';
+    nativeSelect.classList.add('ui-custom-select__native');
+
+    const compact = Boolean(options.compact);
+    const parent = nativeSelect.parentNode;
+    if (!parent) return;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'custom-university-select';
-    wrapper.tabIndex = 0;
-    wrapper.setAttribute('role', 'combobox');
-    wrapper.setAttribute('aria-expanded', 'false');
-    wrapper.setAttribute('aria-label', 'Выбор университета');
+    wrapper.className = compact ? 'ui-custom-select ui-custom-select--compact' : 'ui-custom-select';
 
     const trigger = document.createElement('button');
     trigger.type = 'button';
-    trigger.className = 'custom-university-trigger';
+    trigger.className = 'ui-custom-select__trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const ariaLabel = nativeSelect.getAttribute('aria-label') || (nativeSelect.id ? document.querySelector(`label[for="${nativeSelect.id}"]`)?.textContent?.trim() : '') || 'Выбор';
+    trigger.setAttribute('aria-label', ariaLabel);
 
-    const triggerText = document.createElement('span');
-    triggerText.className = 'custom-university-trigger-text';
-    trigger.appendChild(triggerText);
+    const valSpan = document.createElement('span');
+    valSpan.className = 'ui-custom-select__value';
+    const chev = document.createElement('span');
+    chev.className = 'ui-custom-select__chevron';
+    chev.setAttribute('aria-hidden', 'true');
+    chev.textContent = '▾';
+    trigger.appendChild(valSpan);
+    trigger.appendChild(chev);
 
     const menu = document.createElement('div');
-    menu.className = 'custom-university-menu';
+    menu.className = 'ui-custom-select__menu';
+    menu.setAttribute('role', 'listbox');
+    if (nativeSelect.id) {
+        menu.id = `${nativeSelect.id}-listbox`;
+        trigger.setAttribute('aria-controls', menu.id);
+    }
+    if (!compact) {
+        menu.style.maxHeight = 'min(360px, 55vh)';
+    }
 
-    const selectedOption = nativeSelect.options[nativeSelect.selectedIndex] || nativeSelect.options[0];
-    triggerText.textContent = selectedOption ? selectedOption.textContent : 'Выберите университет';
+    function syncTriggerText() {
+        const idx = nativeSelect.selectedIndex;
+        const opt = idx >= 0 ? nativeSelect.options[idx] : null;
+        valSpan.textContent = opt ? opt.textContent : '';
+    }
 
-    Array.from(nativeSelect.options).forEach((option, index) => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'custom-university-option';
-        item.textContent = option.textContent;
-        item.dataset.value = option.value;
-        item.dataset.index = String(index);
-
-        if (option.value === nativeSelect.value) {
-            item.classList.add('active');
-        }
-
-        item.addEventListener('click', () => {
-            nativeSelect.value = option.value;
-            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-            triggerText.textContent = option.textContent;
-
-            menu.querySelectorAll('.custom-university-option.active').forEach(activeEl => {
-                activeEl.classList.remove('active');
-            });
-            item.classList.add('active');
-
-            wrapper.classList.remove('open');
-            wrapper.setAttribute('aria-expanded', 'false');
+    function updateOptionHighlight() {
+        const v = nativeSelect.value;
+        menu.querySelectorAll('.ui-custom-select__option').forEach((btn) => {
+            btn.classList.toggle('is-selected', btn.dataset.value === v);
         });
+    }
 
-        menu.appendChild(item);
-    });
+    function appendOptionButton(optionEl) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ui-custom-select__option';
+        btn.setAttribute('role', 'option');
+        btn.dataset.value = optionEl.value;
+        btn.textContent = optionEl.textContent;
+        if (optionEl.value === nativeSelect.value) btn.classList.add('is-selected');
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            nativeSelect.value = optionEl.value;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            closeAllUiCustomSelects(null);
+            syncTriggerText();
+            updateOptionHighlight();
+        });
+        menu.appendChild(btn);
+    }
 
-    trigger.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const shouldOpen = !wrapper.classList.contains('open');
-        wrapper.classList.toggle('open', shouldOpen);
-        wrapper.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-    });
+    function rebuildMenu() {
+        menu.innerHTML = '';
+        Array.from(nativeSelect.children).forEach((node) => {
+            if (node.tagName === 'OPTGROUP') {
+                const gl = document.createElement('div');
+                gl.className = 'ui-custom-select__group-label';
+                gl.textContent = node.label || '';
+                menu.appendChild(gl);
+                node.querySelectorAll('option').forEach((opt) => appendOptionButton(opt));
+            } else if (node.tagName === 'OPTION') {
+                appendOptionButton(node);
+            }
+        });
+        syncTriggerText();
+        updateOptionHighlight();
+    }
 
-    nativeSelect.addEventListener('change', () => {
-        const selected = nativeSelect.options[nativeSelect.selectedIndex];
-        triggerText.textContent = selected ? selected.textContent : 'Выберите университет';
-    });
-
-    document.addEventListener('click', (event) => {
-        if (!wrapper.contains(event.target)) {
-            wrapper.classList.remove('open');
-            wrapper.setAttribute('aria-expanded', 'false');
-        }
-    });
-
-    wrapper.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            wrapper.classList.remove('open');
-            wrapper.setAttribute('aria-expanded', 'false');
-            trigger.focus();
-        }
-    });
-
+    parent.insertBefore(wrapper, nativeSelect);
+    wrapper.appendChild(nativeSelect);
     wrapper.appendChild(trigger);
     wrapper.appendChild(menu);
 
-    nativeSelect.style.display = 'none';
-    nativeSelect.dataset.customized = 'true';
-    nativeSelect.insertAdjacentElement('afterend', wrapper);
+    nativeSelect.addEventListener('change', () => {
+        syncTriggerText();
+        updateOptionHighlight();
+    });
+
+    const mo = new MutationObserver(() => {
+        rebuildMenu();
+    });
+    mo.observe(nativeSelect, { childList: true, subtree: false });
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bindUiCustomSelectOutsideCloseOnce();
+        closeAllFilterComboboxes(null);
+        const opening = !wrapper.classList.contains('open');
+        closeAllUiCustomSelects(opening ? wrapper : null);
+        if (opening) {
+            wrapper.classList.add('open');
+            trigger.setAttribute('aria-expanded', 'true');
+        } else {
+            wrapper.classList.remove('open');
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    rebuildMenu();
+}
+
+function isCatalogFilterSelect(sel) {
+    return Boolean(
+        sel &&
+        sel.matches &&
+        sel.matches(
+            'select[data-filter-university], select[data-filter-teacher], select[data-filter="practices"], select[data-filter="labs"], select[data-filter="courses"]'
+        )
+    );
+}
+
+function initAllPageCustomSelects() {
+    bindUiCustomSelectOutsideCloseOnce();
+
+    document.querySelectorAll('select').forEach((sel) => {
+        if (sel.classList.contains('ui-custom-select__native')) return;
+        if (sel.dataset.uiCustom === '1') return;
+        if (isCatalogFilterSelect(sel)) return;
+        const compact = Boolean(sel.closest('.filter-section'));
+        initCustomSelect(sel, { compact });
+    });
+}
+
+// ==================== ПОИСКОВЫЕ COMBOBOX ДЛЯ ФИЛЬТРОВ КАТАЛОГА ====================
+
+function closeAllFilterComboboxes(exceptWrapper) {
+    document.querySelectorAll('.ui-combobox.open').forEach((w) => {
+        if (exceptWrapper && w === exceptWrapper) return;
+        w.classList.remove('open');
+        const inp = w.querySelector('.ui-combobox__input');
+        if (inp) inp.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function initFilterCombobox(nativeSelect) {
+    if (!nativeSelect || nativeSelect.tagName !== 'SELECT' || nativeSelect.dataset.filterCombobox === '1') return;
+    if (!isCatalogFilterSelect(nativeSelect)) return;
+
+    nativeSelect.dataset.filterCombobox = '1';
+    nativeSelect.classList.add('ui-custom-select__native');
+
+    const parent = nativeSelect.parentNode;
+    if (!parent) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ui-combobox ui-combobox--compact';
+
+    const control = document.createElement('div');
+    control.className = 'ui-combobox__control';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ui-combobox__input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.id = `${nativeSelect.id}-cb`;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    const idForCss = nativeSelect.id
+        ? typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(nativeSelect.id)
+            : nativeSelect.id.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        : '';
+    const ariaLabel =
+        nativeSelect.getAttribute('aria-label') ||
+        (nativeSelect.id ? document.querySelector(`label[for="${idForCss}"]`)?.textContent?.trim() : '') ||
+        'Выбор';
+    input.setAttribute('aria-label', ariaLabel);
+
+    const listId = `${nativeSelect.id}-listbox`;
+    const menu = document.createElement('ul');
+    menu.className = 'ui-combobox__menu';
+    menu.id = listId;
+    menu.setAttribute('role', 'listbox');
+    input.setAttribute('aria-controls', listId);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'ui-combobox__clear';
+    clearBtn.setAttribute('aria-label', 'Сбросить фильтр');
+    clearBtn.textContent = '×';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'ui-combobox__toggle';
+    toggleBtn.setAttribute('aria-label', 'Открыть список');
+    toggleBtn.setAttribute('tabindex', '-1');
+    const chev = document.createElement('span');
+    chev.className = 'ui-combobox__chevron';
+    chev.setAttribute('aria-hidden', 'true');
+    chev.textContent = '▾';
+    toggleBtn.appendChild(chev);
+
+    const label = nativeSelect.id ? document.querySelector(`label[for="${idForCss}"]`) : null;
+    if (label) label.setAttribute('for', input.id);
+
+    let menuShowsAll = true;
+    let closeTimer = null;
+
+    function getOptions() {
+        return Array.from(nativeSelect.options).map((o) => ({ value: o.value, label: o.textContent.trim() }));
+    }
+
+    function selectedLabel() {
+        const opt = nativeSelect.options[nativeSelect.selectedIndex];
+        return opt ? opt.textContent.trim() : '';
+    }
+
+    function syncClearVisibility() {
+        clearBtn.style.display = nativeSelect.value === 'all' ? 'none' : '';
+    }
+
+    function syncInputFromSelect() {
+        input.value = selectedLabel();
+        syncClearVisibility();
+    }
+
+    function filteredOptions(query) {
+        const q = (query || '').trim().toLowerCase();
+        const all = getOptions();
+        if (!q) return all;
+        return all.filter((o) => o.label.toLowerCase().includes(q));
+    }
+
+    function renderMenu() {
+        menu.innerHTML = '';
+        const opts = menuShowsAll ? getOptions() : filteredOptions(input.value);
+        if (opts.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'ui-combobox__empty';
+            li.setAttribute('role', 'presentation');
+            li.textContent = 'Ничего не найдено';
+            menu.appendChild(li);
+            return;
+        }
+        opts.forEach((o) => {
+            const li = document.createElement('li');
+            li.className = 'ui-combobox__option';
+            li.setAttribute('role', 'option');
+            li.dataset.value = o.value;
+            li.textContent = o.label;
+            if (o.value === nativeSelect.value) li.classList.add('is-selected');
+            li.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                nativeSelect.value = o.value;
+                nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                menuShowsAll = true;
+                syncInputFromSelect();
+                closeMenu();
+            });
+            menu.appendChild(li);
+        });
+    }
+
+    function openMenu() {
+        bindUiCustomSelectOutsideCloseOnce();
+        closeAllUiCustomSelects(null);
+        closeAllFilterComboboxes(wrap);
+        wrap.classList.add('open');
+        input.setAttribute('aria-expanded', 'true');
+        menuShowsAll = true;
+        renderMenu();
+    }
+
+    function closeMenu() {
+        wrap.classList.remove('open');
+        input.setAttribute('aria-expanded', 'false');
+        menuShowsAll = true;
+        syncInputFromSelect();
+    }
+
+    function scheduleClose() {
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
+            if (!wrap.contains(document.activeElement)) {
+                closeMenu();
+            }
+        }, 0);
+    }
+
+    nativeSelect.addEventListener('change', () => {
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+
+    const mo = new MutationObserver(() => {
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+    mo.observe(nativeSelect, { childList: true, subtree: false });
+
+    input.addEventListener('focus', () => {
+        menuShowsAll = true;
+        openMenu();
+    });
+
+    input.addEventListener('click', () => {
+        if (!wrap.classList.contains('open')) openMenu();
+    });
+
+    input.addEventListener('input', () => {
+        menuShowsAll = false;
+        if (!wrap.classList.contains('open')) wrap.classList.add('open');
+        input.setAttribute('aria-expanded', 'true');
+        renderMenu();
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeMenu();
+            input.blur();
+        }
+    });
+
+    input.addEventListener('blur', scheduleClose);
+
+    toggleBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+    });
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (wrap.classList.contains('open')) {
+            closeMenu();
+        } else {
+            input.focus();
+            openMenu();
+        }
+    });
+
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        nativeSelect.value = 'all';
+        nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        menuShowsAll = true;
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+
+    parent.insertBefore(wrap, nativeSelect);
+    control.appendChild(input);
+    control.appendChild(clearBtn);
+    control.appendChild(toggleBtn);
+    wrap.appendChild(control);
+    wrap.appendChild(menu);
+    wrap.appendChild(nativeSelect);
+
+    nativeSelect._filterComboboxSync = syncInputFromSelect;
+    nativeSelect._filterComboboxOpen = openMenu;
+    nativeSelect._filterComboboxClose = closeMenu;
+
+    syncInputFromSelect();
+}
+
+function syncFilterComboboxFromSelect(sel) {
+    if (sel && typeof sel._filterComboboxSync === 'function') sel._filterComboboxSync();
+}
+
+function initAllFilterComboboxes() {
+    document
+        .querySelectorAll(
+            'select[data-filter-university], select[data-filter-teacher], select[data-filter="practices"], select[data-filter="labs"], select[data-filter="courses"]'
+        )
+        .forEach(initFilterCombobox);
 }
 
 // Проверка авторизации
@@ -524,6 +859,9 @@ function openTab(tabName) {
     if (search) search.value = '';
 
     if (select) {
+        syncFilterComboboxFromSelect(select);
+        syncFilterComboboxFromSelect(uni);
+        syncFilterComboboxFromSelect(teacher);
         renderProducts(tabName, 'all', 'all', 'all', '');
     }
 }
@@ -2983,6 +3321,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     checkAuth();
     initTheme();
+    initAllPageCustomSelects();
+    initAllFilterComboboxes();
+
     renderProducts('practices', 'all', 'all', 'all', '');
     renderProducts('labs', 'all', 'all', 'all', '');
     renderProducts('courses', 'all', 'all', 'all', '');
@@ -3199,8 +3540,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             setCookie(fieldId, field.value, 30);
         });
     });
-
-    initProductUniversityCustomSelect();
 
     // ==================== ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ ====================
 
