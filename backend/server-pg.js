@@ -1442,14 +1442,6 @@ app.get('/auth/vk/callback', (req, res) => {
 });
 
 // ============================================
-// Главная страница
-// ============================================
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(ROOT, 'index.html'));
-});
-
-// ============================================
 // Запуск сервера
 // ============================================
 
@@ -1460,7 +1452,7 @@ initDatabase().then(async (db) => {
     await telegram.initTelegramTable(db);
     await telegram.loadChatIdCache(db);
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`✅ Сервер запущен: http://localhost:${PORT}`);
         console.log(`📡 API: http://localhost:${PORT}/api`);
         console.log(`🔒 Trust proxy: включён`);

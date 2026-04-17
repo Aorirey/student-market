@@ -37,10 +37,10 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "data:", "https://unpkg.com"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "data:"],
             imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-            connectSrc: ["'self'", '*', 'blob:', 'data:'],
+            connectSrc: ["'self'", '*', 'blob:', 'data:', 'https://oauth.vk.com', 'https://api.vk.com'],
             fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'", 'blob:', 'data:'],
@@ -97,7 +97,7 @@ app.use('/api/reviews', strictLimiter);
 // БЕЗОПАСНОСТЬ: CORS настройки (A05)
 // ============================================
 app.use(cors({
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000'],
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -3618,7 +3618,7 @@ if (dbMode === 'postgres') {
     // Запуск сервера
     // ============================================
     initDatabase().then(() => {
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log(`Сервер запущен: http://localhost:${PORT}`);
             console.log(`API доступно: http://localhost:${PORT}/api`);
             console.log(`Режим безопасности: включен`);

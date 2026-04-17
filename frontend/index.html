@@ -7,39 +7,12 @@
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <!-- Геометрический фон -->
-    <div class="geo-bg" aria-hidden="true">
-        <!-- Кубы (3D) -->
-        <div class="geo-shape cube-3d" style="--x:6%;--y:12%;--size:70px;--dur:28s;--delay:0s;--rotate:15deg"></div>
-        <div class="geo-shape cube-3d" style="--x:70%;--y:18%;--size:60px;--dur:32s;--delay:-8s;--rotate:-10deg"></div>
-        <div class="geo-shape cube-3d" style="--x:82%;--y:52%;--size:55px;--dur:26s;--delay:-4s;--rotate:20deg"></div>
-        <div class="geo-shape cube-3d" style="--x:3%;--y:78%;--size:65px;--dur:30s;--delay:-12s;--rotate:-5deg"></div>
-        <div class="geo-shape cube-3d" style="--x:88%;--y:85%;--size:45px;--dur:24s;--delay:-16s;--rotate:25deg"></div>
-        <!-- Пирамиды -->
-        <div class="geo-shape pyramid" style="--x:38%;--y:8%;--size:55px;--dur:34s;--delay:-6s"></div>
-        <div class="geo-shape pyramid" style="--x:42%;--y:72%;--size:60px;--dur:30s;--delay:-14s"></div>
-        <div class="geo-shape pyramid" style="--x:75%;--y:78%;--size:40px;--dur:27s;--delay:-2s"></div>
-        <!-- Цилиндры -->
-        <div class="geo-shape cylinder-3d" style="--x:22%;--y:42%;--size:55px;--dur:36s;--delay:-10s"></div>
-        <div class="geo-shape cylinder-3d" style="--x:92%;--y:35%;--size:50px;--dur:33s;--delay:-3s"></div>
-        <div class="geo-shape cylinder-3d" style="--x:8%;--y:90%;--size:48px;--dur:29s;--delay:-18s"></div>
-        <!-- Конусы -->
-        <div class="geo-shape cone-3d" style="--x:50%;--y:82%;--size:55px;--dur:31s;--delay:-7s"></div>
-        <div class="geo-shape cone-3d" style="--x:95%;--y:65%;--size:42px;--dur:28s;--delay:-20s"></div>
-        <!-- Кольца -->
-        <div class="geo-shape ring" style="--x:30%;--y:10%;--size:18px;--dur:22s;--delay:-2s"></div>
-        <div class="geo-shape ring" style="--x:68%;--y:8%;--size:14px;--dur:25s;--delay:-9s"></div>
-        <div class="geo-shape ring" style="--x:82%;--y:30%;--size:12px;--dur:20s;--delay:-5s"></div>
-        <div class="geo-shape ring" style="--x:22%;--y:68%;--size:16px;--dur:23s;--delay:-13s"></div>
-        <div class="geo-shape ring" style="--x:55%;--y:90%;--size:13px;--dur:21s;--delay:-17s"></div>
-        <!-- Треугольники outline -->
-        <div class="geo-shape triangle-outline" style="--x:12%;--y:38%;--size:28px;--dur:26s;--delay:-4s"></div>
-        <div class="geo-shape triangle-outline" style="--x:55%;--y:30%;--size:22px;--dur:24s;--delay:-11s"></div>
-        <div class="geo-shape triangle-outline" style="--x:78%;--y:42%;--size:20px;--dur:28s;--delay:-8s"></div>
-        <!-- Точечные сетки -->
-        <div class="geo-shape dot-grid" style="--x:4%;--y:6%;--size:90px;--dur:50s;--delay:0s"></div>
-        <div class="geo-shape dot-grid" style="--x:76%;--y:68%;--size:80px;--dur:55s;--delay:-15s"></div>
+    <!-- Фон: halftone-точки + шум (нижний слой); поверх — canvas с частицами -->
+    <div class="soft-void" aria-hidden="true">
+        <div class="soft-void__halftone"></div>
+        <div class="soft-void__noise"></div>
     </div>
+    <canvas id="bg-canvas" aria-hidden="true"></canvas>
 
     <!-- ═══════════════════════════════════════
          HEADER
@@ -47,9 +20,6 @@
     <header role="banner">
         <div class="header-start">
             <a href="/" class="logo" aria-label="STUDMARKET — На главную">STUDMARKET</a>
-            <button type="button" class="theme-toggle" id="theme-toggle" data-action="toggle-theme" title="Переключить тему" aria-label="Переключить тему">
-                <span class="theme-icon" aria-hidden="true">🌙</span>
-            </button>
         </div>
 
         <!-- Гостевые кнопки -->
@@ -1022,6 +992,7 @@
         </div>
     </div>
 
+    <script src="/js/particles.js"></script>
     <script src="/js/script.js"></script>
 
     <!-- VK ID OneTap виджет -->

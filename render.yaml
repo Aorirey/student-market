@@ -1,0 +1,32 @@
+# Render Blueprint — StudentMarket (Express + PostgreSQL)
+# Validates against: https://render.com/docs/blueprint-spec
+# After push: https://dashboard.render.com/blueprint/new?repo=https://github.com/Aorirey/student-market
+
+services:
+  - type: web
+    name: student-market-web
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: student-market-db
+          property: connectionString
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+
+databases:
+  - name: student-market-db
+    databaseName: student_market
+    user: student_market
+    plan: free
+    postgresMajorVersion: "16"

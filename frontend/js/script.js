@@ -1,9 +1,12 @@
 // --- JAVASCRIPT ЛОГИКА ---
 
-// Автоматическое определение API_URL
-const API_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:3000/api'
-    : '/api';
+// API: на Render и при запуске Express на том же origin — тот же хост/протокол; при Live Server (другой порт) — бэкенд :3000
+const __host = window.location.hostname;
+const __isLocal = __host === 'localhost' || __host === '127.0.0.1';
+const __devSplit = __isLocal && window.location.port && window.location.port !== '3000';
+const API_URL = __devSplit
+    ? `${window.location.protocol}//${__host}:3000/api`
+    : `${window.location.origin}/api`;
 
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
@@ -44,29 +47,6 @@ function isValidEmail(email) {
 function isValidNumber(value, min = 1, max = 1000000) {
     const num = typeof value === 'string' ? parseInt(value, 10) : value;
     return !isNaN(num) && num >= min && num <= max;
-}
-
-// ==================== ТЕМА ====================
-
-function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeIcon(savedTheme);
-}
-
-function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
-}
-
-function updateThemeIcon(theme) {
-    const icon = document.querySelector('.theme-icon');
-    if (icon) {
-        icon.textContent = theme === 'dark' ? '☀️' : '🌙';
-    }
 }
 
 // ==================== УТИЛИТЫ ====================
@@ -3089,9 +3069,6 @@ function setupEventListeners() {
             case 'logout':
                 logout();
                 break;
-            case 'toggle-theme':
-                toggleTheme();
-                break;
             case 'mark-all-notifications-read':
                 markAllNotificationsRead();
                 break;
@@ -3321,7 +3298,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     checkAuth();
-    initTheme();
     initAllPageCustomSelects();
     initAllFilterComboboxes();
 

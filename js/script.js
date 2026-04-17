@@ -46,33 +46,6 @@ function isValidNumber(value, min = 1, max = 1000000) {
     return !isNaN(num) && num >= min && num <= max;
 }
 
-// ==================== ТЕМНАЯ ТЕМА ====================
-
-// Инициализация темы
-function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeIcon(savedTheme);
-}
-
-// Переключение темы
-function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
-}
-
-// Обновление иконки темы
-function updateThemeIcon(theme) {
-    const icon = document.querySelector('.theme-icon');
-    if (icon) {
-        icon.textContent = theme === 'dark' ? '☀️' : '🌙';
-    }
-}
-
 // Форматирование даты в московском времени
 function formatMoscowTime(dateStr) {
     if (!dateStr) return '';
@@ -2353,9 +2326,6 @@ function setupEventListeners() {
         const action = target.dataset.action;
 
         switch (action) {
-            case 'toggle-theme':
-                toggleTheme();
-                break;
             case 'open-modal':
                 openModal(target.dataset.modal);
                 break;
@@ -2544,9 +2514,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
     }
-
-    // Инициализация темы
-    initTheme();
 
     // Восстанавливаем сессию
     const savedUser = sessionStorage.getItem('currentUser');

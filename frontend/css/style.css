@@ -77,54 +77,12 @@
     --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-html[data-theme="light"] {
-    color-scheme: light;
-    --bg-base: #f3f2f8;
-    --bg-surface: rgba(0, 0, 0, 0.04);
-    --bg-surface-hover: rgba(0, 0, 0, 0.07);
-    --bg-elevated: rgba(255, 255, 255, 0.85);
-    --bg-glass: rgba(255, 255, 255, 0.72);
-    --text-main: #14121f;
-    --text-secondary: #4b4a58;
-    --text-muted: #7a7888;
-    --border: rgba(0, 0, 0, 0.08);
-    --border-hover: rgba(0, 0, 0, 0.14);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.12);
-    --primary: #5c6169;
-    --primary-light: #7a8088;
-    --primary-hover: #484d55;
-    --primary-gradient: linear-gradient(135deg, #5c6169, #3d4249);
-    --accent-warm: #6b7078;
-    --accent-warm-gradient: linear-gradient(135deg, #6b7078, #484d55);
-    --accent-glow: rgba(92, 97, 105, 0.2);
-    --shadow-glow: 0 0 40px rgba(92, 97, 105, 0.1);
-    --primary-blue: var(--primary);
-}
-
-html[data-theme="light"] body {
-    background: var(--bg-base);
-    color: var(--text-main);
-}
-
-html[data-theme="light"] .geo-bg {
-    background:
-        linear-gradient(135deg,
-            rgba(90, 92, 98, 0.1) 0%,
-            transparent 35%,
-            transparent 55%,
-            rgba(70, 72, 78, 0.08) 75%,
-            transparent 100%
-        ),
-        linear-gradient(200deg,
-            transparent 40%,
-            rgba(110, 112, 120, 0.06) 50%,
-            transparent 60%
-        ),
-        var(--bg-base);
+    /* Фон под частицами (тёмная тема) */
+    --soft-noise-opacity: 0.48;
+    --soft-noise-tile: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    --soft-dot-a: rgba(220, 225, 235, 0.055);
+    --soft-dot-b: rgba(180, 188, 202, 0.035);
 }
 
 /* === Reset & Base === */
@@ -136,6 +94,7 @@ html[data-theme="light"] .geo-bg {
 
 html {
     scroll-behavior: smooth;
+    color-scheme: dark;
 }
 
 body {
@@ -143,7 +102,7 @@ body {
     font-size: var(--fs-base);
     line-height: 1.6;
     color: var(--text-main);
-    background: #0f1012;
+    background: var(--bg-base);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -153,129 +112,52 @@ body {
     position: relative;
 }
 
-/* === Геометрический фон === */
-.geo-bg {
+/* === Фон под частицами: halftone-сетка + шум (без линий и виньетки) === */
+.soft-void {
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
-    /* Тёмный серо-графитовый фон + мягкие лучи */
-    background:
-        linear-gradient(135deg,
-            rgba(92, 96, 104, 0.14) 0%,
-            transparent 30%,
-            transparent 50%,
-            rgba(56, 60, 68, 0.12) 70%,
-            transparent 100%
-        ),
-        linear-gradient(200deg,
-            transparent 40%,
-            rgba(88, 92, 100, 0.08) 50%,
-            transparent 60%
-        ),
-        #0f1012;
+    background: var(--bg-base);
 }
 
-/* Базовая фигура */
-.geo-shape {
+.soft-void__halftone {
     position: absolute;
-    left: var(--x);
-    top: var(--y);
-    width: var(--size);
-    height: var(--size);
-    opacity: 0;
-    animation: geoAppear 1.5s ease forwards, geoFloat var(--dur) ease-in-out infinite alternate;
-    animation-delay: var(--delay), calc(var(--delay) + 1.5s);
+    inset: 0;
+    opacity: 0.62;
+    background-image:
+        radial-gradient(circle at 50% 50%, var(--soft-dot-a) 0.62px, transparent 0.72px),
+        radial-gradient(circle at 50% 50%, var(--soft-dot-b) 0.48px, transparent 0.58px);
+    background-size: 14px 14px, 14px 14px;
+    background-position: 0 0, 7px 7px;
+    mix-blend-mode: overlay;
 }
 
-@keyframes geoAppear {
-    from { opacity: 0; transform: scale(0.8); }
-    to { opacity: 0.4; transform: scale(1); }
+.soft-void__noise {
+    position: absolute;
+    inset: 0;
+    opacity: var(--soft-noise-opacity);
+    background-image: var(--soft-noise-tile);
+    background-size: 200px 200px;
+    mix-blend-mode: overlay;
 }
 
-@keyframes geoFloat {
-    0% {
-        transform: translate(0, 0) rotate(0deg);
+/* === Частицы: canvas поверх фона === */
+#bg-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #bg-canvas {
+        display: none;
     }
-    25% {
-        transform: translate(12px, -18px) rotate(5deg);
-    }
-    50% {
-        transform: translate(-8px, 12px) rotate(-3deg);
-    }
-    75% {
-        transform: translate(6px, -8px) rotate(2deg);
-    }
-    100% {
-        transform: translate(-4px, 10px) rotate(-2deg);
-    }
-}
-
-/* === Куб 3D (изометрический) === */
-.geo-shape.cube-3d {
-    background: linear-gradient(135deg,
-        rgba(132, 138, 148, 0.16) 0%,
-        rgba(74, 78, 86, 0.08) 40%,
-        rgba(44, 48, 55, 0.14) 100%
-    );
-    clip-path: polygon(
-        50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
-    );
-    transform: rotate(var(--rotate, 0deg));
-    filter: drop-shadow(0 0 15px rgba(132, 138, 148, 0.12));
-}
-
-/* === Пирамида === */
-.geo-shape.pyramid {
-    background: linear-gradient(180deg,
-        rgba(140, 145, 154, 0.15) 0%,
-        rgba(63, 67, 74, 0.08) 100%
-    );
-    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-    filter: drop-shadow(0 0 12px rgba(130, 136, 145, 0.1));
-}
-
-/* === Цилиндр 3D === */
-.geo-shape.cylinder-3d {
-    background: linear-gradient(180deg,
-        rgba(148, 153, 161, 0.12) 0%,
-        rgba(84, 88, 95, 0.08) 40%,
-        rgba(58, 62, 69, 0.1) 100%
-    );
-    border-radius: 50%;
-    filter: drop-shadow(0 0 12px rgba(126, 132, 141, 0.08));
-}
-
-/* === Конус 3D === */
-.geo-shape.cone-3d {
-    background: linear-gradient(180deg,
-        rgba(132, 137, 146, 0.14) 0%,
-        rgba(68, 72, 80, 0.06) 100%
-    );
-    clip-path: polygon(50% 0%, 95% 100%, 5% 100%);
-    filter: drop-shadow(0 0 10px rgba(126, 132, 141, 0.08));
-}
-
-/* === Кольцо === */
-.geo-shape.ring {
-    background: transparent;
-    border: 1.5px solid rgba(148, 153, 161, 0.12);
-    border-radius: 50%;
-}
-
-/* === Треугольник outline === */
-.geo-shape.triangle-outline {
-    background: transparent;
-    border: 1.5px solid rgba(148, 153, 161, 0.1);
-    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
-}
-
-/* === Точечная сетка === */
-.geo-shape.dot-grid {
-    background-image: radial-gradient(circle, rgba(148, 153, 161, 0.1) 1.5px, transparent 1.5px);
-    background-size: 10px 10px;
-    border-radius: 2px;
 }
 
 /* === Ссылки и фокус (a11y) === */
@@ -345,26 +227,6 @@ header {
     align-items: center;
     gap: var(--space-md);
     flex-shrink: 0;
-}
-
-.theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--border);
-    background: var(--bg-surface);
-    font-size: 1.15rem;
-    line-height: 1;
-    transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
-}
-
-.theme-toggle:hover {
-    background: var(--bg-surface-hover);
-    border-color: var(--border-hover);
-    transform: translateY(-1px);
 }
 
 /* Группа кнопок авторизации */
@@ -519,6 +381,8 @@ header {
    НАВИГАЦИЯ — ВКЛАДКИ
    ============================================ */
 .tabs-container {
+    position: relative;
+    z-index: 1;
     background: var(--bg-glass);
     backdrop-filter: blur(16px) saturate(1.5);
     -webkit-backdrop-filter: blur(16px) saturate(1.5);
@@ -765,12 +629,6 @@ select.ui-custom-select__native {
     border-radius: var(--radius-pill);
 }
 
-html[data-theme="light"] .ui-custom-select__menu {
-    background: rgba(248, 248, 250, 0.92);
-    backdrop-filter: blur(24px) saturate(1.1);
-    -webkit-backdrop-filter: blur(24px) saturate(1.1);
-}
-
 .ui-custom-select.open .ui-custom-select__menu {
     display: block;
 }
@@ -959,12 +817,6 @@ html[data-theme="light"] .ui-custom-select__menu {
     border-radius: var(--radius-pill);
 }
 
-html[data-theme="light"] .ui-combobox__menu {
-    background: rgba(248, 248, 250, 0.92);
-    backdrop-filter: blur(24px) saturate(1.1);
-    -webkit-backdrop-filter: blur(24px) saturate(1.1);
-}
-
 .ui-combobox.open .ui-combobox__menu {
     display: block;
 }
@@ -1101,17 +953,23 @@ select:not(.ui-custom-select__native):disabled {
     gap: var(--space-lg);
 }
 
-/* Матовый фон под список товаров */
+/* Матовое стекло: частицы и фон видны через blur */
 #grid-practices,
 #grid-labs,
-#grid-courses {
-    background: rgba(24, 22, 40, 0.46);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+#grid-courses,
+#grid-custom,
+#seller-products-grid {
+    background:
+        linear-gradient(165deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 42%, rgba(0, 0, 0, 0.06) 100%),
+        rgba(17, 18, 20, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
-    backdrop-filter: blur(16px) saturate(1.3);
-    -webkit-backdrop-filter: blur(16px) saturate(1.3);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(22px) saturate(1.35);
+    -webkit-backdrop-filter: blur(22px) saturate(1.35);
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
     min-height: 220px;
     align-content: start;
 }
