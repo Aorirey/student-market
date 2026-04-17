@@ -77,6 +77,45 @@
     --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+html[data-theme="light"] {
+    color-scheme: light;
+    --bg-base: #f3f2f8;
+    --bg-surface: rgba(0, 0, 0, 0.04);
+    --bg-surface-hover: rgba(0, 0, 0, 0.07);
+    --bg-elevated: rgba(255, 255, 255, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.72);
+    --text-main: #14121f;
+    --text-secondary: #4b4a58;
+    --text-muted: #7a7888;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-hover: rgba(0, 0, 0, 0.14);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme="light"] body {
+    background: var(--bg-base);
+    color: var(--text-main);
+}
+
+html[data-theme="light"] .geo-bg {
+    background:
+        linear-gradient(135deg,
+            rgba(120, 80, 200, 0.12) 0%,
+            transparent 35%,
+            transparent 55%,
+            rgba(140, 100, 220, 0.08) 75%,
+            transparent 100%
+        ),
+        linear-gradient(200deg,
+            transparent 40%,
+            rgba(160, 120, 240, 0.06) 50%,
+            transparent 60%
+        ),
+        var(--bg-base);
+}
+
 /* === Reset & Base === */
 *, *::before, *::after {
     box-sizing: border-box;
@@ -290,6 +329,33 @@ header {
     flex-shrink: 0;
 }
 
+.header-start {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-shrink: 0;
+}
+
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    font-size: 1.15rem;
+    line-height: 1;
+    transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.theme-toggle:hover {
+    background: var(--bg-surface-hover);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+}
+
 /* Группа кнопок авторизации */
 .auth-buttons {
     display: flex;
@@ -497,6 +563,17 @@ main {
     gap: var(--space-md);
     margin-bottom: var(--space-xl);
     flex-wrap: wrap;
+}
+
+.filter-field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.filter-field select {
+    min-width: 0;
 }
 
 .search-bar-wrapper {

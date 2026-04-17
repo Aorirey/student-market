@@ -45,7 +45,12 @@
          HEADER
          ═══════════════════════════════════════ -->
     <header role="banner">
-        <a href="/" class="logo" aria-label="STUDMARKET — На главную">STUDMARKET</a>
+        <div class="header-start">
+            <a href="/" class="logo" aria-label="STUDMARKET — На главную">STUDMARKET</a>
+            <button type="button" class="theme-toggle" id="theme-toggle" data-action="toggle-theme" title="Переключить тему" aria-label="Переключить тему">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+            </button>
+        </div>
 
         <!-- Гостевые кнопки -->
         <div class="auth-buttons" id="auth-buttons" role="navigation" aria-label="Авторизация">
@@ -101,21 +106,27 @@
                     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input type="text" class="search-input" id="search-practices" placeholder="Поиск по названию, дисциплине..." data-filter-search="practices" aria-label="Поиск по названию">
                 </div>
-                <label class="filter-label" for="select-practices">Дисциплина:</label>
-                <select id="select-practices" data-filter="practices" aria-label="Фильтр по дисциплине">
-                    <option value="all">Все дисциплины</option>
-                    <option value="Основы программирования">Основы программирования</option>
-                    <option value="Высшая математика">Высшая математика</option>
-                    <option value="Физика">Физика</option>
-                </select>
-                <label class="filter-label" for="select-university-practices">Университет:</label>
-                <select id="select-university-practices" data-filter-university="practices" aria-label="Фильтр по университету">
-                    <option value="all">Все университеты</option>
-                </select>
-                <label class="filter-label" for="select-teacher-practices">Преподаватель:</label>
-                <select id="select-teacher-practices" data-filter-teacher="practices" aria-label="Фильтр по преподавателю">
-                    <option value="all">Все преподаватели</option>
-                </select>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-practices">Дисциплина:</label>
+                    <select id="select-practices" data-filter="practices" aria-label="Фильтр по дисциплине">
+                        <option value="all">Все дисциплины</option>
+                        <option value="Основы программирования">Основы программирования</option>
+                        <option value="Высшая математика">Высшая математика</option>
+                        <option value="Физика">Физика</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-university-practices">Университет:</label>
+                    <select id="select-university-practices" data-filter-university="practices" aria-label="Фильтр по университету">
+                        <option value="all">Все университеты</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-teacher-practices">Преподаватель:</label>
+                    <select id="select-teacher-practices" data-filter-teacher="practices" aria-label="Фильтр по преподавателю">
+                        <option value="all">Все преподаватели</option>
+                    </select>
+                </div>
             </div>
             <div class="products-grid" id="grid-practices" aria-live="polite"></div>
         </div>
@@ -127,21 +138,27 @@
                     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input type="text" class="search-input" id="search-labs" placeholder="Поиск по названию, дисциплине..." data-filter-search="labs" aria-label="Поиск по названию">
                 </div>
-                <label class="filter-label" for="select-labs">Дисциплина:</label>
-                <select id="select-labs" data-filter="labs" aria-label="Фильтр по дисциплине">
-                    <option value="all">Все дисциплины</option>
-                    <option value="Основы электронной техники">Основы электронной техники</option>
-                    <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
-                    <option value="Микропроцессорная техника">Микропроцессорная техника</option>
-                </select>
-                <label class="filter-label" for="select-university-labs">Университет:</label>
-                <select id="select-university-labs" data-filter-university="labs" aria-label="Фильтр по университету">
-                    <option value="all">Все университеты</option>
-                </select>
-                <label class="filter-label" for="select-teacher-labs">Преподаватель:</label>
-                <select id="select-teacher-labs" data-filter-teacher="labs" aria-label="Фильтр по преподавателю">
-                    <option value="all">Все преподаватели</option>
-                </select>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-labs">Дисциплина:</label>
+                    <select id="select-labs" data-filter="labs" aria-label="Фильтр по дисциплине">
+                        <option value="all">Все дисциплины</option>
+                        <option value="Основы электронной техники">Основы электронной техники</option>
+                        <option value="Теоретические основы электротехники">Теоретические основы электротехники</option>
+                        <option value="Микропроцессорная техника">Микропроцессорная техника</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-university-labs">Университет:</label>
+                    <select id="select-university-labs" data-filter-university="labs" aria-label="Фильтр по университету">
+                        <option value="all">Все университеты</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-teacher-labs">Преподаватель:</label>
+                    <select id="select-teacher-labs" data-filter-teacher="labs" aria-label="Фильтр по преподавателю">
+                        <option value="all">Все преподаватели</option>
+                    </select>
+                </div>
             </div>
             <div class="products-grid" id="grid-labs" aria-live="polite"></div>
         </div>
@@ -153,21 +170,27 @@
                     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input type="text" class="search-input" id="search-courses" placeholder="Поиск по названию, дисциплине..." data-filter-search="courses" aria-label="Поиск по названию">
                 </div>
-                <label class="filter-label" for="select-courses">Дисциплина:</label>
-                <select id="select-courses" data-filter="courses" aria-label="Фильтр по дисциплине">
-                    <option value="all">Все дисциплины</option>
-                    <option value="Экономика предприятия">Экономика предприятия</option>
-                    <option value="Менеджмент">Менеджмент</option>
-                    <option value="Разработка ПО">Разработка ПО</option>
-                </select>
-                <label class="filter-label" for="select-university-courses">Университет:</label>
-                <select id="select-university-courses" data-filter-university="courses" aria-label="Фильтр по университету">
-                    <option value="all">Все университеты</option>
-                </select>
-                <label class="filter-label" for="select-teacher-courses">Преподаватель:</label>
-                <select id="select-teacher-courses" data-filter-teacher="courses" aria-label="Фильтр по преподавателю">
-                    <option value="all">Все преподаватели</option>
-                </select>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-courses">Дисциплина:</label>
+                    <select id="select-courses" data-filter="courses" aria-label="Фильтр по дисциплине">
+                        <option value="all">Все дисциплины</option>
+                        <option value="Экономика предприятия">Экономика предприятия</option>
+                        <option value="Менеджмент">Менеджмент</option>
+                        <option value="Разработка ПО">Разработка ПО</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-university-courses">Университет:</label>
+                    <select id="select-university-courses" data-filter-university="courses" aria-label="Фильтр по университету">
+                        <option value="all">Все университеты</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label class="filter-label" for="select-teacher-courses">Преподаватель:</label>
+                    <select id="select-teacher-courses" data-filter-teacher="courses" aria-label="Фильтр по преподавателю">
+                        <option value="all">Все преподаватели</option>
+                    </select>
+                </div>
             </div>
             <div class="products-grid" id="grid-courses" aria-live="polite"></div>
         </div>

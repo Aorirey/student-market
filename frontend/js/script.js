@@ -46,6 +46,29 @@ function isValidNumber(value, min = 1, max = 1000000) {
     return !isNaN(num) && num >= min && num <= max;
 }
 
+// ==================== ТЕМА ====================
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+    const icon = document.querySelector('.theme-icon');
+    if (icon) {
+        icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+}
+
 // ==================== УТИЛИТЫ ====================
 
 // Форматирование даты в московском времени
@@ -489,7 +512,19 @@ function openTab(tabName) {
     const select = document.getElementById(`select-${tabName}`);
     if (select) {
         select.value = 'all';
-        renderProducts(tabName, 'all', 'all', '', '');
+    }
+
+    const uni = document.getElementById(`select-university-${tabName}`);
+    if (uni) uni.value = 'all';
+
+    const teacher = document.getElementById(`select-teacher-${tabName}`);
+    if (teacher) teacher.value = 'all';
+
+    const search = document.getElementById(`search-${tabName}`);
+    if (search) search.value = '';
+
+    if (select) {
+        renderProducts(tabName, 'all', 'all', 'all', '');
     }
 }
 
@@ -676,14 +711,16 @@ async function renderProducts(category, filterDiscipline, filterUniversity, filt
             }
 
             // Фильтр по преподавателю
-            if (filterTeacher && filterTeacher.trim() && !item.teacher?.toLowerCase().includes(filterTeacher.toLowerCase())) {
+            const teacherVal = item.teacher || item.teacherName || '';
+            if (filterTeacher && filterTeacher !== 'all' && filterTeacher.trim() &&
+                teacherVal.toLowerCase() !== filterTeacher.toLowerCase()) {
                 return;
             }
 
             // Поиск по названию, дисциплине, университету, преподавателю
             if (searchText && searchText.trim()) {
                 const query = searchText.toLowerCase().trim();
-                const haystack = `${item.title} ${item.discipline} ${item.university || ''} ${item.teacher || ''}`.toLowerCase();
+                const haystack = `${item.title} ${item.discipline} ${item.university || ''} ${teacherVal}`.toLowerCase();
                 if (!haystack.includes(query)) {
                     return;
                 }
@@ -749,10 +786,11 @@ async function renderProducts(category, filterDiscipline, filterUniversity, filt
                 contentDiv.appendChild(universityEl);
             }
 
-            if (item.teacher) {
+            const displayTeacher = item.teacher || item.teacherName;
+            if (displayTeacher) {
                 const teacherEl = document.createElement('p');
                 teacherEl.className = 'card-info';
-                teacherEl.textContent = `Преподаватель: ${item.teacher}`;
+                teacherEl.textContent = `Преподаватель: ${displayTeacher}`;
                 contentDiv.appendChild(teacherEl);
             }
 
@@ -1203,9 +1241,9 @@ async function deleteProduct(productId) {
 
         showToast('Успешно', 'Товар удалён', 'success');
         loadCabinetData();
-        renderProducts('practices', 'all', 'all', '', '');
-        renderProducts('labs', 'all', 'all', '', '');
-        renderProducts('courses', 'all', 'all', '', '');
+        renderProducts('practices', 'all', 'all', 'all', '');
+        renderProducts('labs', 'all', 'all', 'all', '');
+        renderProducts('courses', 'all', 'all', 'all', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -1867,9 +1905,9 @@ async function approveProduct(productId) {
 
         showToast('Успешно', 'Товар одобрен', 'success');
         loadAdminData();
-        renderProducts('practices', 'all', 'all', '', '');
-        renderProducts('labs', 'all', 'all', '', '');
-        renderProducts('courses', 'all', 'all', '', '');
+        renderProducts('practices', 'all', 'all', 'all', '');
+        renderProducts('labs', 'all', 'all', 'all', '');
+        renderProducts('courses', 'all', 'all', 'all', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -1890,9 +1928,9 @@ async function rejectProduct(productId) {
 
         showToast('Информация', 'Товар отклонён', 'info');
         loadAdminData();
-        renderProducts('practices', 'all', 'all', '', '');
-        renderProducts('labs', 'all', 'all', '', '');
-        renderProducts('courses', 'all', 'all', '', '');
+        renderProducts('practices', 'all', 'all', 'all', '');
+        renderProducts('labs', 'all', 'all', 'all', '');
+        renderProducts('courses', 'all', 'all', 'all', '');
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
         console.error(error);
@@ -2712,6 +2750,9 @@ function setupEventListeners() {
             case 'logout':
                 logout();
                 break;
+            case 'toggle-theme':
+                toggleTheme();
+                break;
             case 'mark-all-notifications-read':
                 markAllNotificationsRead();
                 break;
@@ -2941,9 +2982,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     checkAuth();
-    renderProducts('practices', 'all');
-    renderProducts('labs', 'all');
-    renderProducts('courses', 'all');
+    initTheme();
+    renderProducts('practices', 'all', 'all', 'all', '');
+    renderProducts('labs', 'all', 'all', 'all', '');
+    renderProducts('courses', 'all', 'all', 'all', '');
     renderCustomRequests('all');
 
     // Настраиваем event listeners (CSP-safe)
