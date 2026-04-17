@@ -1,24 +1,26 @@
 /* ============================================
    STUDMARKET — Единая тёмная тема
-   Тёплые акценты, glassmorphism
+   Серо-графитовая палитра, glassmorphism
    ============================================ */
 
 /* === CSS Custom Properties (единая тема) === */
 :root {
     /* Палитра фона */
-    --bg-base: #141418;
+    --bg-base: #111214;
     --bg-surface: rgba(255, 255, 255, 0.04);
     --bg-surface-hover: rgba(255, 255, 255, 0.08);
     --bg-elevated: rgba(255, 255, 255, 0.06);
-    --bg-glass: rgba(30, 30, 36, 0.8);
+    --bg-glass: rgba(24, 25, 28, 0.8);
 
     /* Акценты */
-    --primary: #a855f7;
-    --primary-hover: #9333ea;
-    --primary-gradient: linear-gradient(135deg, #a855f7, #7c3aed);
-    --accent-warm: #f97316;
-    --accent-warm-gradient: linear-gradient(135deg, #f97316, #ea580c);
-    --accent-glow: rgba(168, 85, 247, 0.25);
+    --primary: #7d848f;
+    --primary-light: #9aa1aa;
+    --primary-hover: #646a73;
+    --primary-gradient: linear-gradient(135deg, #6d727b, #3b4048);
+    --accent-warm: #8a8f98;
+    --accent-warm-gradient: linear-gradient(135deg, #727780, #484d55);
+    --accent-glow: rgba(125, 132, 143, 0.22);
+    --primary-blue: var(--primary);
 
     /* Текст */
     --text-main: #f0f0f2;
@@ -35,15 +37,15 @@
     --warning: #fbbf24;
 
     /* Категории */
-    --cat-practices: #818cf8;
-    --cat-labs: #c084fc;
-    --cat-courses: #fbbf24;
+    --cat-practices: #6f7680;
+    --cat-labs: #858b95;
+    --cat-courses: #9aa0a8;
 
     /* Тени */
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.5);
-    --shadow-glow: 0 0 40px rgba(168, 85, 247, 0.15);
+    --shadow-glow: 0 0 40px rgba(125, 132, 143, 0.12);
 
     /* Скругления */
     --radius-sm: 8px;
@@ -92,6 +94,15 @@ html[data-theme="light"] {
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
     --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.12);
+    --primary: #5c6169;
+    --primary-light: #7a8088;
+    --primary-hover: #484d55;
+    --primary-gradient: linear-gradient(135deg, #5c6169, #3d4249);
+    --accent-warm: #6b7078;
+    --accent-warm-gradient: linear-gradient(135deg, #6b7078, #484d55);
+    --accent-glow: rgba(92, 97, 105, 0.2);
+    --shadow-glow: 0 0 40px rgba(92, 97, 105, 0.1);
+    --primary-blue: var(--primary);
 }
 
 html[data-theme="light"] body {
@@ -102,15 +113,15 @@ html[data-theme="light"] body {
 html[data-theme="light"] .geo-bg {
     background:
         linear-gradient(135deg,
-            rgba(120, 80, 200, 0.12) 0%,
+            rgba(90, 92, 98, 0.1) 0%,
             transparent 35%,
             transparent 55%,
-            rgba(140, 100, 220, 0.08) 75%,
+            rgba(70, 72, 78, 0.08) 75%,
             transparent 100%
         ),
         linear-gradient(200deg,
             transparent 40%,
-            rgba(160, 120, 240, 0.06) 50%,
+            rgba(110, 112, 120, 0.06) 50%,
             transparent 60%
         ),
         var(--bg-base);
@@ -132,7 +143,7 @@ body {
     font-size: var(--fs-base);
     line-height: 1.6;
     color: var(--text-main);
-    background: #0d0b1a;
+    background: #0f1012;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -149,21 +160,21 @@ body {
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
-    /* Тёмный фиолетовый градиент + диагональные лучи */
+    /* Тёмный серо-графитовый фон + мягкие лучи */
     background:
         linear-gradient(135deg,
-            rgba(100, 60, 180, 0.15) 0%,
+            rgba(92, 96, 104, 0.14) 0%,
             transparent 30%,
             transparent 50%,
-            rgba(120, 70, 200, 0.1) 70%,
+            rgba(56, 60, 68, 0.12) 70%,
             transparent 100%
         ),
         linear-gradient(200deg,
             transparent 40%,
-            rgba(140, 80, 220, 0.08) 50%,
+            rgba(88, 92, 100, 0.08) 50%,
             transparent 60%
         ),
-        #0d0b1a;
+        #0f1012;
 }
 
 /* Базовая фигура */
@@ -204,65 +215,65 @@ body {
 /* === Куб 3D (изометрический) === */
 .geo-shape.cube-3d {
     background: linear-gradient(135deg,
-        rgba(140, 110, 255, 0.2) 0%,
-        rgba(100, 70, 200, 0.1) 40%,
-        rgba(80, 50, 160, 0.15) 100%
+        rgba(132, 138, 148, 0.16) 0%,
+        rgba(74, 78, 86, 0.08) 40%,
+        rgba(44, 48, 55, 0.14) 100%
     );
     clip-path: polygon(
         50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%
     );
     transform: rotate(var(--rotate, 0deg));
-    filter: drop-shadow(0 0 15px rgba(140, 110, 255, 0.15));
+    filter: drop-shadow(0 0 15px rgba(132, 138, 148, 0.12));
 }
 
 /* === Пирамида === */
 .geo-shape.pyramid {
     background: linear-gradient(180deg,
-        rgba(150, 120, 255, 0.18) 0%,
-        rgba(100, 70, 200, 0.08) 100%
+        rgba(140, 145, 154, 0.15) 0%,
+        rgba(63, 67, 74, 0.08) 100%
     );
     clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-    filter: drop-shadow(0 0 12px rgba(140, 110, 255, 0.12));
+    filter: drop-shadow(0 0 12px rgba(130, 136, 145, 0.1));
 }
 
 /* === Цилиндр 3D === */
 .geo-shape.cylinder-3d {
     background: linear-gradient(180deg,
-        rgba(160, 130, 255, 0.15) 0%,
-        rgba(120, 90, 220, 0.08) 40%,
-        rgba(100, 70, 180, 0.12) 100%
+        rgba(148, 153, 161, 0.12) 0%,
+        rgba(84, 88, 95, 0.08) 40%,
+        rgba(58, 62, 69, 0.1) 100%
     );
     border-radius: 50%;
-    filter: drop-shadow(0 0 12px rgba(140, 110, 255, 0.1));
+    filter: drop-shadow(0 0 12px rgba(126, 132, 141, 0.08));
 }
 
 /* === Конус 3D === */
 .geo-shape.cone-3d {
     background: linear-gradient(180deg,
-        rgba(140, 110, 255, 0.16) 0%,
-        rgba(100, 70, 200, 0.06) 100%
+        rgba(132, 137, 146, 0.14) 0%,
+        rgba(68, 72, 80, 0.06) 100%
     );
     clip-path: polygon(50% 0%, 95% 100%, 5% 100%);
-    filter: drop-shadow(0 0 10px rgba(140, 110, 255, 0.1));
+    filter: drop-shadow(0 0 10px rgba(126, 132, 141, 0.08));
 }
 
 /* === Кольцо === */
 .geo-shape.ring {
     background: transparent;
-    border: 1.5px solid rgba(160, 130, 255, 0.15);
+    border: 1.5px solid rgba(148, 153, 161, 0.12);
     border-radius: 50%;
 }
 
 /* === Треугольник outline === */
 .geo-shape.triangle-outline {
     background: transparent;
-    border: 1.5px solid rgba(160, 130, 255, 0.12);
+    border: 1.5px solid rgba(148, 153, 161, 0.1);
     clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
 /* === Точечная сетка === */
 .geo-shape.dot-grid {
-    background-image: radial-gradient(circle, rgba(160, 130, 255, 0.12) 1.5px, transparent 1.5px);
+    background-image: radial-gradient(circle, rgba(148, 153, 161, 0.1) 1.5px, transparent 1.5px);
     background-size: 10px 10px;
     border-radius: 2px;
 }
@@ -384,7 +395,7 @@ header {
 .btn-signup {
     background: var(--primary-gradient);
     color: #fff;
-    box-shadow: 0 2px 12px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 12px rgba(125, 132, 143, 0.3);
     animation: btnGlow 3s ease-in-out infinite;
     padding: 0.75rem 1.5rem;
     border-radius: var(--radius-pill);
@@ -398,16 +409,16 @@ header {
 
 @keyframes btnGlow {
     0%, 100% {
-        box-shadow: 0 2px 12px rgba(168, 85, 247, 0.3);
+        box-shadow: 0 2px 12px rgba(125, 132, 143, 0.3);
     }
     50% {
-        box-shadow: 0 4px 24px rgba(168, 85, 247, 0.5), 0 0 40px rgba(168, 85, 247, 0.15);
+        box-shadow: 0 4px 24px rgba(125, 132, 143, 0.5), 0 0 40px rgba(125, 132, 143, 0.15);
     }
 }
 
 .btn-signup:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 28px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 6px 28px rgba(125, 132, 143, 0.5);
     animation: none;
 }
 
@@ -452,10 +463,20 @@ header {
 
 .btn-notifications {
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    font-size: 1.1rem !important;
     padding: 0.4rem 0.6rem !important;
+}
+
+.btn-notifications-icon {
+    display: block;
+    width: 1.15rem;
+    height: 1.15rem;
+    object-fit: contain;
+    pointer-events: none;
 }
 
 .btn-notifications:hover {
@@ -464,23 +485,23 @@ header {
 }
 
 .btn-cabinet {
-    background: rgba(168, 85, 247, 0.12);
+    background: rgba(125, 132, 143, 0.12);
     color: var(--primary);
-    border: 1px solid rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(125, 132, 143, 0.2);
 }
 
 .btn-cabinet:hover {
-    background: rgba(168, 85, 247, 0.22);
+    background: rgba(125, 132, 143, 0.22);
 }
 
 .btn-admin {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    background: linear-gradient(135deg, #5c6169, #383c42);
     color: #fff;
     border: none;
 }
 
 .btn-admin:hover {
-    background: linear-gradient(135deg, #6d28d9, #5b21b6);
+    background: linear-gradient(135deg, #484d55, #2f3338);
     transform: translateY(-1px);
 }
 
@@ -1006,31 +1027,31 @@ select:not(.ui-custom-select__native) {
     background-repeat: no-repeat;
     background-position: right 1rem center;
     background-size: 12px;
-    box-shadow: var(--shadow-sm), 0 0 0 0 rgba(168, 85, 247, 0);
+    box-shadow: var(--shadow-sm), 0 0 0 0 rgba(125, 132, 143, 0);
     letter-spacing: 0.01em;
 }
 
 select:not(.ui-custom-select__native):hover {
     border-color: var(--primary);
     background-color: var(--bg-surface-hover);
-    box-shadow: var(--shadow-md), 0 0 20px rgba(168, 85, 247, 0.2);
+    box-shadow: var(--shadow-md), 0 0 20px rgba(125, 132, 143, 0.2);
     transform: translateY(-1px);
 }
 
 select:not(.ui-custom-select__native):focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px var(--accent-glow), 0 0 25px rgba(168, 85, 247, 0.35), var(--shadow-md);
-    background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(124, 58, 237, 0.05));
+    box-shadow: 0 0 0 3px var(--accent-glow), 0 0 25px rgba(125, 132, 143, 0.28), var(--shadow-md);
+    background: linear-gradient(135deg, rgba(125, 132, 143, 0.08), rgba(88, 93, 102, 0.05));
     animation: selectGlow 2s ease-in-out infinite;
 }
 
 @keyframes selectGlow {
     0%, 100% {
-        box-shadow: 0 0 0 3px var(--accent-glow), 0 0 25px rgba(168, 85, 247, 0.35), var(--shadow-md);
+        box-shadow: 0 0 0 3px var(--accent-glow), 0 0 25px rgba(125, 132, 143, 0.28), var(--shadow-md);
     }
     50% {
-        box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.35), 0 0 35px rgba(168, 85, 247, 0.5), var(--shadow-md);
+        box-shadow: 0 0 0 4px rgba(125, 132, 143, 0.3), 0 0 35px rgba(125, 132, 143, 0.4), var(--shadow-md);
     }
 }
 
@@ -1186,15 +1207,15 @@ select:not(.ui-custom-select__native):disabled {
 
 /* Цветные полоски по категориям */
 .product-card[data-category="practices"]::before {
-    background: linear-gradient(90deg, var(--cat-practices), #6366f1);
+    background: linear-gradient(90deg, var(--cat-practices), #4a5058);
 }
 
 .product-card[data-category="labs"]::before {
-    background: linear-gradient(90deg, var(--cat-labs), #a855f7);
+    background: linear-gradient(90deg, var(--cat-labs), var(--primary));
 }
 
 .product-card[data-category="courses"]::before {
-    background: linear-gradient(90deg, var(--cat-courses), #f59e0b);
+    background: linear-gradient(90deg, var(--cat-courses), #5a6169);
 }
 
 .card-tag {
@@ -1279,12 +1300,12 @@ select:not(.ui-custom-select__native):disabled {
     font-weight: 600;
     font-size: var(--fs-sm);
     transition: all var(--transition-fast);
-    box-shadow: 0 2px 10px rgba(168, 85, 247, 0.25);
+    box-shadow: 0 2px 10px rgba(125, 132, 143, 0.25);
 }
 
 .buy-btn:hover {
     transform: scale(1.05);
-    box-shadow: 0 4px 20px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 20px rgba(125, 132, 143, 0.4);
 }
 
 .buy-btn:active {
@@ -1336,7 +1357,7 @@ select:not(.ui-custom-select__native):disabled {
     background: var(--primary-gradient);
     color: #fff;
     border-color: transparent;
-    box-shadow: 0 2px 12px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 12px rgba(125, 132, 143, 0.3);
 }
 
 .cabinet-section {
@@ -1408,12 +1429,12 @@ select:not(.ui-custom-select__native):disabled {
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition-fast);
-    box-shadow: 0 2px 12px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 12px rgba(125, 132, 143, 0.3);
 }
 
 .btn-add-product:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 6px 24px rgba(125, 132, 143, 0.4);
 }
 
 .form-hint {
@@ -1528,10 +1549,10 @@ select:not(.ui-custom-select__native):disabled {
    АДМИН-ПАНЕЛЬ
    ============================================ */
 .admin-header {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(109, 40, 217, 0.1));
+    background: linear-gradient(135deg, rgba(88, 93, 102, 0.15), rgba(62, 66, 72, 0.1));
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(124, 58, 237, 0.25);
+    border: 1px solid rgba(88, 93, 102, 0.25);
     border-radius: var(--radius-lg);
     padding: var(--space-xl);
     margin-bottom: var(--space-xl);
@@ -1566,7 +1587,7 @@ select:not(.ui-custom-select__native):disabled {
 }
 
 .admin-tab.active {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    background: linear-gradient(135deg, #5c6169, #383c42);
     color: #fff;
     border-color: transparent;
 }
@@ -1951,11 +1972,20 @@ footer {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid var(--border);
-    padding: var(--space-xl);
+    padding: var(--space-sm) var(--space-md);
     text-align: center;
     color: var(--text-muted);
-    font-size: var(--fs-sm);
+    font-size: var(--fs-xs);
     margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+}
+
+footer p {
+    margin: 0;
+    line-height: 1.35;
 }
 
 .btn-privacy-policy {
@@ -1964,15 +1994,15 @@ footer {
     color: var(--primary);
     font-size: var(--fs-xs);
     cursor: pointer;
-    margin-top: var(--space-sm);
-    padding: 0.5rem 1rem;
+    margin-top: 0;
+    padding: 0.2rem 0.65rem;
     border-radius: var(--radius-pill);
     transition: all var(--transition-fast);
     text-decoration: underline;
 }
 
 .btn-privacy-policy:hover {
-    background: rgba(168, 85, 247, 0.1);
+    background: rgba(125, 132, 143, 0.1);
     text-decoration: none;
 }
 
@@ -2078,7 +2108,7 @@ footer {
 }
 
 .privacy-policy-content::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #c084fc, #a855f7);
+    background: linear-gradient(180deg, var(--primary-light), var(--primary));
 }
 
 .privacy-policy-content h3 {
@@ -2267,7 +2297,7 @@ footer {
     -webkit-backdrop-filter: blur(20px) saturate(1.8);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg), 0 0 40px rgba(168, 85, 247, 0.1);
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(125, 132, 143, 0.1);
     z-index: 1000;
     max-height: 420px;
     overflow-y: auto;
@@ -2297,12 +2327,12 @@ footer {
 }
 
 .notifications-dropdown::-webkit-scrollbar-thumb {
-    background: rgba(168, 85, 247, 0.3);
+    background: rgba(125, 132, 143, 0.3);
     border-radius: var(--radius-pill);
 }
 
 .notifications-dropdown::-webkit-scrollbar-thumb:hover {
-    background: rgba(168, 85, 247, 0.5);
+    background: rgba(125, 132, 143, 0.5);
 }
 
 .notifications-header {
@@ -2311,7 +2341,7 @@ footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: linear-gradient(135deg, rgba(168, 85, 247, 0.05), transparent);
+    background: linear-gradient(135deg, rgba(125, 132, 143, 0.05), transparent);
 }
 
 .notifications-header h3 {
@@ -2378,14 +2408,14 @@ footer {
 }
 
 .notification-item.unread {
-    background: rgba(168, 85, 247, 0.08);
-    border-color: rgba(168, 85, 247, 0.2);
+    background: rgba(125, 132, 143, 0.08);
+    border-color: rgba(125, 132, 143, 0.2);
     animation: unreadPulse 2s ease-in-out infinite;
 }
 
 @keyframes unreadPulse {
-    0%, 100% { background: rgba(168, 85, 247, 0.08); }
-    50% { background: rgba(168, 85, 247, 0.14); }
+    0%, 100% { background: rgba(125, 132, 143, 0.08); }
+    50% { background: rgba(125, 132, 143, 0.14); }
 }
 
 .notification-item.read {
@@ -2422,13 +2452,13 @@ footer {
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition-fast);
-    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 8px rgba(125, 132, 143, 0.3);
     width: 100%;
 }
 
 .notification-action-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 16px rgba(125, 132, 143, 0.4);
 }
 
 .notification-action-btn:active {
@@ -2482,8 +2512,8 @@ footer {
 }
 
 .chat-item.active {
-    background: rgba(168, 85, 247, 0.1);
-    border-color: rgba(168, 85, 247, 0.25);
+    background: rgba(125, 132, 143, 0.1);
+    border-color: rgba(125, 132, 143, 0.25);
 }
 
 .chat-item-name {
@@ -2638,7 +2668,7 @@ footer {
 
 .btn-send-message:hover {
     transform: scale(1.08);
-    box-shadow: 0 2px 12px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 2px 12px rgba(125, 132, 143, 0.4);
 }
 
 .attached-file-preview {
@@ -2727,21 +2757,21 @@ input[type="number"] {
 
 /* Кнопка «Подтвердить» в модалке покупки — как на концепте */
 #confirm-purchase-modal .btn-signup {
-    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    background: var(--primary-gradient);
     color: #fff;
     font-size: var(--fs-md);
     font-weight: 700;
     padding: 0.9rem 2rem;
     border-radius: var(--radius-lg);
     letter-spacing: 0.02em;
-    box-shadow: 0 4px 24px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 24px rgba(125, 132, 143, 0.4);
     border: none;
     transition: all var(--transition-fast);
 }
 
 #confirm-purchase-modal .btn-signup:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.5);
+    box-shadow: 0 8px 32px rgba(125, 132, 143, 0.5);
 }
 
 #confirm-purchase-modal .btn-reject {
@@ -2774,7 +2804,7 @@ input[type="number"] {
 
 .btn-view:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 2px 8px rgba(125, 132, 143, 0.3);
 }
 
 .btn-upload {
@@ -2818,13 +2848,13 @@ input[type="number"] {
     font-size: var(--fs-xs);
     font-weight: 600;
     transition: all var(--transition-fast);
-    box-shadow: 0 2px 8px rgba(168, 85, 247, 0.25);
+    box-shadow: 0 2px 8px rgba(125, 132, 143, 0.25);
     cursor: pointer;
 }
 
 .btn-chat-sale:hover {
     transform: translateY(-1px) scale(1.03);
-    box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 16px rgba(125, 132, 143, 0.4);
 }
 
 .btn-chat-sale:active {
@@ -3112,7 +3142,7 @@ input[type="number"] {
         background: var(--primary-gradient);
         border: none;
         color: #fff;
-        box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+        box-shadow: 0 2px 8px rgba(125, 132, 143, 0.3);
     }
 
     .btn-send-message:active {
@@ -3202,7 +3232,7 @@ input[type="number"] {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a855f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237d848f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 1rem center;
     padding-right: 2.5rem;
@@ -3243,7 +3273,7 @@ input[type="number"] {
     width: 12px;
     height: 12px;
     transform: translateY(-50%);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a855f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237d848f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-size: 12px;
     transition: transform var(--transition-fast);
@@ -3313,7 +3343,7 @@ input[type="number"] {
 
 .custom-university-option:hover,
 .custom-university-option.active {
-    background: rgba(168, 85, 247, 0.18);
+    background: rgba(125, 132, 143, 0.18);
     color: #fff;
 }
 
@@ -3337,7 +3367,7 @@ input[type="number"] {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a855f7' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237d848f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 1rem center;
     padding-right: 2.5rem;

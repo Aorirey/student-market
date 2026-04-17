@@ -410,7 +410,8 @@ function initFilterCombobox(nativeSelect) {
         closeAllFilterComboboxes(wrap);
         wrap.classList.add('open');
         input.setAttribute('aria-expanded', 'true');
-        menuShowsAll = true;
+        input.value = '';
+        menuShowsAll = false;
         renderMenu();
     }
 
