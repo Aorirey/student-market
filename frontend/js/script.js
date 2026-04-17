@@ -11,6 +11,27 @@ const API_URL = __devSplit
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
 
+function authToken() {
+    if (!currentUser) return '';
+    return currentUser.token || currentUser.accessToken || '';
+}
+
+/** JSON + Bearer для защищённых POST/PATCH (логин/регистрация не используют). */
+function authJsonHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const t = authToken();
+    if (t) headers.Authorization = `Bearer ${t}`;
+    return headers;
+}
+
+/** Bearer для GET/DELETE/PATCH без тела. */
+function authBearerHeaders(extra = {}) {
+    const headers = { ...extra };
+    const t = authToken();
+    if (t) headers.Authorization = `Bearer ${t}`;
+    return headers;
+}
+
 // ============================================
 // БЕЗОПАСНОСТЬ: XSS защита (A08)
 // ============================================
@@ -240,13 +261,21 @@ function isCatalogFilterSelect(sel) {
     );
 }
 
+/** Поисковый combobox: фильтры каталога + университет и дисциплина в форме «Добавить товар» */
+function isSearchableComboboxSelect(sel) {
+    return (
+        isCatalogFilterSelect(sel) ||
+        Boolean(sel && (sel.id === 'product-university' || sel.id === 'product-discipline'))
+    );
+}
+
 function initAllPageCustomSelects() {
     bindUiCustomSelectOutsideCloseOnce();
 
     document.querySelectorAll('select').forEach((sel) => {
         if (sel.classList.contains('ui-custom-select__native')) return;
         if (sel.dataset.uiCustom === '1') return;
-        if (isCatalogFilterSelect(sel)) return;
+        if (isSearchableComboboxSelect(sel)) return;
         const compact = Boolean(sel.closest('.filter-section'));
         initCustomSelect(sel, { compact });
     });
@@ -265,7 +294,10 @@ function closeAllFilterComboboxes(exceptWrapper) {
 
 function initFilterCombobox(nativeSelect) {
     if (!nativeSelect || nativeSelect.tagName !== 'SELECT' || nativeSelect.dataset.filterCombobox === '1') return;
-    if (!isCatalogFilterSelect(nativeSelect)) return;
+    if (!isSearchableComboboxSelect(nativeSelect)) return;
+    if (nativeSelect.id === 'product-discipline') return;
+
+    const clearedValue = nativeSelect.id === 'product-university' ? '' : 'all';
 
     nativeSelect.dataset.filterCombobox = '1';
     nativeSelect.classList.add('ui-custom-select__native');
@@ -274,7 +306,8 @@ function initFilterCombobox(nativeSelect) {
     if (!parent) return;
 
     const wrap = document.createElement('div');
-    wrap.className = 'ui-combobox ui-combobox--compact';
+    wrap.className =
+        nativeSelect.id === 'product-university' ? 'ui-combobox ui-combobox--form-field' : 'ui-combobox ui-combobox--compact';
 
     const control = document.createElement('div');
     control.className = 'ui-combobox__control';
@@ -309,7 +342,7 @@ function initFilterCombobox(nativeSelect) {
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'ui-combobox__clear';
-    clearBtn.setAttribute('aria-label', 'Сбросить фильтр');
+    clearBtn.setAttribute('aria-label', nativeSelect.id === 'product-university' ? 'Сбросить выбор' : 'Сбросить фильтр');
     clearBtn.textContent = '×';
 
     const toggleBtn = document.createElement('button');
@@ -339,7 +372,7 @@ function initFilterCombobox(nativeSelect) {
     }
 
     function syncClearVisibility() {
-        clearBtn.style.display = nativeSelect.value === 'all' ? 'none' : '';
+        clearBtn.style.display = nativeSelect.value === clearedValue ? 'none' : '';
     }
 
     function syncInputFromSelect() {
@@ -465,7 +498,319 @@ function initFilterCombobox(nativeSelect) {
     clearBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        nativeSelect.value = 'all';
+        nativeSelect.value = clearedValue;
+        nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        menuShowsAll = true;
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+
+    parent.insertBefore(wrap, nativeSelect);
+    control.appendChild(input);
+    control.appendChild(clearBtn);
+    control.appendChild(toggleBtn);
+    wrap.appendChild(control);
+    wrap.appendChild(menu);
+    wrap.appendChild(nativeSelect);
+
+    nativeSelect._filterComboboxSync = syncInputFromSelect;
+    nativeSelect._filterComboboxOpen = openMenu;
+    nativeSelect._filterComboboxClose = closeMenu;
+
+    syncInputFromSelect();
+}
+
+const PRODUCT_DISCIPLINE_MAX_LEN = 100;
+
+/**
+ * Дисциплина в форме товара: поиск по подсказкам + произвольный текст (сохраняется в value и уходит в API).
+ */
+function initProductDisciplineCombobox(nativeSelect) {
+    if (!nativeSelect || nativeSelect.tagName !== 'SELECT' || nativeSelect.dataset.filterCombobox === '1') return;
+    if (nativeSelect.id !== 'product-discipline') return;
+
+    nativeSelect.dataset.filterCombobox = '1';
+    nativeSelect.classList.add('ui-custom-select__native');
+
+    const clearedValue = '';
+    const parent = nativeSelect.parentNode;
+    if (!parent) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ui-combobox ui-combobox--form-field';
+
+    const control = document.createElement('div');
+    control.className = 'ui-combobox__control';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ui-combobox__input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.id = `${nativeSelect.id}-cb`;
+    input.placeholder = 'Введите дисциплину или выберите из списка';
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    const idForCss =
+        nativeSelect.id && typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(nativeSelect.id)
+            : nativeSelect.id;
+    const ariaLabel =
+        nativeSelect.getAttribute('aria-label') ||
+        (nativeSelect.id ? document.querySelector(`label[for="${idForCss}"]`)?.textContent?.trim() : '') ||
+        'Дисциплина';
+    input.setAttribute('aria-label', ariaLabel);
+
+    const listId = `${nativeSelect.id}-listbox`;
+    const menu = document.createElement('ul');
+    menu.className = 'ui-combobox__menu';
+    menu.id = listId;
+    menu.setAttribute('role', 'listbox');
+    input.setAttribute('aria-controls', listId);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'ui-combobox__clear';
+    clearBtn.setAttribute('aria-label', 'Очистить');
+    clearBtn.textContent = '×';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'ui-combobox__toggle';
+    toggleBtn.setAttribute('aria-label', 'Открыть список');
+    toggleBtn.setAttribute('tabindex', '-1');
+    const chev = document.createElement('span');
+    chev.className = 'ui-combobox__chevron';
+    chev.setAttribute('aria-hidden', 'true');
+    chev.textContent = '▾';
+    toggleBtn.appendChild(chev);
+
+    const label = nativeSelect.id ? document.querySelector(`label[for="${idForCss}"]`) : null;
+    if (label) label.setAttribute('for', input.id);
+
+    let menuShowsAll = true;
+    let closeTimer = null;
+
+    function getPresetOptions() {
+        return Array.from(nativeSelect.options)
+            .filter((o) => o.value.trim() !== '')
+            .map((o) => ({ value: o.value, label: o.textContent.trim() }));
+    }
+
+    function selectedLabel() {
+        const opt = nativeSelect.options[nativeSelect.selectedIndex];
+        return opt && opt.value.trim() !== '' ? opt.textContent.trim() : '';
+    }
+
+    function syncClearVisibility() {
+        clearBtn.style.display = nativeSelect.value === clearedValue ? 'none' : '';
+    }
+
+    function syncInputFromSelect() {
+        input.value = selectedLabel();
+        syncClearVisibility();
+    }
+
+    function ensureOptionForValue(text) {
+        const t = text.trim().slice(0, PRODUCT_DISCIPLINE_MAX_LEN);
+        if (!t) return;
+        const exists = Array.from(nativeSelect.options).some(
+            (o) => o.value === t || o.textContent.trim().toLowerCase() === t.toLowerCase()
+        );
+        if (!exists) {
+            const op = document.createElement('option');
+            op.value = t;
+            op.textContent = t;
+            nativeSelect.appendChild(op);
+        }
+    }
+
+    /**
+     * @param {boolean} forceFreetext — true: Enter / «Использовать» — сохранить введённый текст как дисциплину,
+     *   даже если есть несколько частичных совпадений. false: blur — не создавать кастом при неоднозначном вводе.
+     */
+    function commitDisciplineInput(forceFreetext) {
+        const raw = input.value.trim().slice(0, PRODUCT_DISCIPLINE_MAX_LEN);
+        if (!raw) {
+            nativeSelect.value = clearedValue;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            syncInputFromSelect();
+            return;
+        }
+        const opts = Array.from(nativeSelect.options).filter((o) => o.value.trim() !== '');
+        const match = opts.find(
+            (o) => o.value === raw || o.textContent.trim().toLowerCase() === raw.toLowerCase()
+        );
+        if (match) {
+            nativeSelect.value = match.value;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            syncInputFromSelect();
+            return;
+        }
+        const presets = getPresetOptions();
+        const needle = raw.toLowerCase();
+        const substr = presets.filter((o) => o.label.toLowerCase().includes(needle));
+        if (substr.length === 1) {
+            nativeSelect.value = substr[0].value;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            syncInputFromSelect();
+            return;
+        }
+        if (substr.length === 0 || forceFreetext) {
+            ensureOptionForValue(raw);
+            nativeSelect.value = raw;
+            nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            syncInputFromSelect();
+            return;
+        }
+        syncInputFromSelect();
+    }
+
+    function filteredOptions(query) {
+        const q = (query || '').trim().toLowerCase();
+        const all = getPresetOptions();
+        if (!q) return all;
+        return all.filter((o) => o.label.toLowerCase().includes(q));
+    }
+
+    function renderMenu() {
+        menu.innerHTML = '';
+        const q = input.value.trim();
+        const opts = menuShowsAll && !q ? getPresetOptions() : filteredOptions(input.value);
+
+        if (opts.length === 0 && q) {
+            const li = document.createElement('li');
+            li.className = 'ui-combobox__option ui-combobox__option--custom';
+            li.setAttribute('role', 'option');
+            const short = q.length > 70 ? `${q.slice(0, 70)}…` : q;
+            li.textContent = `Использовать «${short}»`;
+            li.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                commitDisciplineInput(true);
+                menuShowsAll = true;
+                closeMenu();
+            });
+            menu.appendChild(li);
+            return;
+        }
+
+        if (opts.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'ui-combobox__empty';
+            li.setAttribute('role', 'presentation');
+            li.textContent = 'Начните ввод или выберите из списка';
+            menu.appendChild(li);
+            return;
+        }
+
+        opts.forEach((o) => {
+            const li = document.createElement('li');
+            li.className = 'ui-combobox__option';
+            li.setAttribute('role', 'option');
+            li.dataset.value = o.value;
+            li.textContent = o.label;
+            if (o.value === nativeSelect.value) li.classList.add('is-selected');
+            li.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                nativeSelect.value = o.value;
+                nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                menuShowsAll = true;
+                syncInputFromSelect();
+                closeMenu();
+            });
+            menu.appendChild(li);
+        });
+    }
+
+    function openMenu() {
+        bindUiCustomSelectOutsideCloseOnce();
+        closeAllUiCustomSelects(null);
+        closeAllFilterComboboxes(wrap);
+        wrap.classList.add('open');
+        input.setAttribute('aria-expanded', 'true');
+        menuShowsAll = !input.value.trim();
+        renderMenu();
+    }
+
+    function closeMenu() {
+        wrap.classList.remove('open');
+        input.setAttribute('aria-expanded', 'false');
+        menuShowsAll = true;
+        syncInputFromSelect();
+    }
+
+    function scheduleClose() {
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
+            if (!wrap.contains(document.activeElement)) {
+                commitDisciplineInput(false);
+                closeMenu();
+            }
+        }, 0);
+    }
+
+    nativeSelect.addEventListener('change', () => {
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+
+    const mo = new MutationObserver(() => {
+        syncInputFromSelect();
+        if (wrap.classList.contains('open')) renderMenu();
+    });
+    mo.observe(nativeSelect, { childList: true, subtree: false });
+
+    input.addEventListener('focus', () => {
+        openMenu();
+    });
+
+    input.addEventListener('click', () => {
+        if (!wrap.classList.contains('open')) openMenu();
+    });
+
+    input.addEventListener('input', () => {
+        menuShowsAll = false;
+        if (!wrap.classList.contains('open')) wrap.classList.add('open');
+        input.setAttribute('aria-expanded', 'true');
+        renderMenu();
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            syncInputFromSelect();
+            closeMenu();
+            input.blur();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            commitDisciplineInput(true);
+            closeMenu();
+            input.blur();
+        }
+    });
+
+    input.addEventListener('blur', scheduleClose);
+
+    toggleBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+    });
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (wrap.classList.contains('open')) {
+            commitDisciplineInput(false);
+            closeMenu();
+        } else {
+            input.focus();
+            openMenu();
+        }
+    });
+
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        nativeSelect.value = clearedValue;
         nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
         menuShowsAll = true;
         syncInputFromSelect();
@@ -494,9 +839,11 @@ function syncFilterComboboxFromSelect(sel) {
 function initAllFilterComboboxes() {
     document
         .querySelectorAll(
-            'select[data-filter-university], select[data-filter-teacher], select[data-filter="practices"], select[data-filter="labs"], select[data-filter="courses"]'
+            'select[data-filter-university], select[data-filter-teacher], select[data-filter="practices"], select[data-filter="labs"], select[data-filter="courses"], select#product-university'
         )
         .forEach(initFilterCombobox);
+    const disciplineSel = document.getElementById('product-discipline');
+    if (disciplineSel) initProductDisciplineCombobox(disciplineSel);
 }
 
 // Проверка авторизации
@@ -793,10 +1140,10 @@ function toggleProductType() {
 
     if (type === 'custom') {
         productFields.style.display = 'none';
-        customFields.style.display = 'block';
+        customFields.style.display = 'flex';
         btnSubmit.textContent = 'Создать запрос';
     } else {
-        productFields.style.display = 'block';
+        productFields.style.display = 'flex';
         customFields.style.display = 'none';
         btnSubmit.textContent = 'Добавить товар';
     }
@@ -1376,11 +1723,11 @@ async function openSellerPage(sellerId, sellerName, event) {
         }
 
         // Загружаем данные продавца (рейтинг)
-        const userResponse = await fetch(`${API_URL}/users/${sellerId}`);
+        const userResponse = await fetch(`${API_URL}/users/${sellerId}`, { headers: authBearerHeaders() });
         const user = await userResponse.json();
 
         // Загружаем количество продаж
-        const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`);
+        const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`, { headers: authBearerHeaders() });
         const sales = await salesResponse.json();
 
         // Вычисляем рейтинг из отзывов
@@ -1469,7 +1816,7 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         try {
             const response = await fetch(`${API_URL}/products`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authJsonHeaders(),
                 body: JSON.stringify({
                     title,
                     university,
@@ -1492,6 +1839,12 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
 
             document.getElementById('product-title').value = '';
             document.getElementById('product-price').value = '';
+            const discEl = document.getElementById('product-discipline');
+            if (discEl) {
+                discEl.value = '';
+                discEl.dispatchEvent(new Event('change', { bubbles: true }));
+                syncFilterComboboxFromSelect(discEl);
+            }
 
             showToast('Информация', 'Товар отправлен на модерацию! Администратор проверит его в ближайшее время.', 'info');
             loadProductsData();
@@ -1507,7 +1860,7 @@ async function submitCustomRequest(title, university, teacher, description, budg
     try {
         const response = await fetch(`${API_URL}/custom-requests`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({
                 title,
                 university,
@@ -1550,7 +1903,8 @@ async function deleteProduct(productId) {
 
     try {
         const response = await fetch(`${API_URL}/products/${productId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: authBearerHeaders()
         });
 
         if (!response.ok) {
@@ -1588,7 +1942,7 @@ async function buyProduct(productId) {
         }
 
         // Получаем актуальные данные пользователя
-        const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`);
+        const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`, { headers: authBearerHeaders() });
         const user = await userResponse.json();
 
         if (user.balance < product.price) {
@@ -1662,7 +2016,7 @@ async function confirmPurchase() {
         const newBalance = userBalance - productPrice;
         const updateBalanceResponse = await fetch(`${API_URL}/users/${currentUser.id}/balance`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({ balance: newBalance })
         });
 
@@ -1673,7 +2027,7 @@ async function confirmPurchase() {
         // Создаём покупку
         const purchaseResponse = await fetch(`${API_URL}/purchases`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({
                 productId: productId,
                 title: productTitle,
@@ -1689,7 +2043,7 @@ async function confirmPurchase() {
         // Создаём чат для покупки
         await fetch(`${API_URL}/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({
                 purchaseId: purchase.id,
                 senderId: sellerId,
@@ -1701,7 +2055,7 @@ async function confirmPurchase() {
         // Создаём уведомление для продавца
         await fetch(`${API_URL}/notifications`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({
                 userId: sellerId,
                 title: 'Новая покупка!',
@@ -1729,12 +2083,12 @@ async function loadCabinetData() {
 
     try {
         // Получаем актуальные данные пользователя
-        const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`);
+        const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`, { headers: authBearerHeaders() });
         const user = await userResponse.json();
         document.getElementById('user-balance').textContent = user.balance || 10000;
 
         // Загружаем покупки (для заказчика)
-        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`, { headers: authBearerHeaders() });
         const purchases = await purchasesResponse.json();
 
         const purchasesList = document.getElementById('purchases-list');
@@ -1800,7 +2154,7 @@ async function loadSalesData() {
     try {
         console.log('[SALES] Загрузка продаж для пользователя:', currentUser.id);
         // Загружаем продажи (для продавца)
-        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
         const sales = await salesResponse.json();
         console.log('[SALES] Получено продаж:', sales.length, sales);
 
@@ -1894,7 +2248,7 @@ async function loadProductsData() {
 
     try {
         // Загружаем товары продавца
-        const productsResponse = await fetch(`${API_URL}/users/${currentUser.id}/products`);
+        const productsResponse = await fetch(`${API_URL}/users/${currentUser.id}/products`, { headers: authBearerHeaders() });
         const userProducts = await productsResponse.json();
 
         const sellerProductsList = document.getElementById('seller-products-list');
@@ -1952,7 +2306,7 @@ async function loadAdminData() {
 
     try {
         // Загружаем ВСЕ товары (включая pending)
-        const productsResponse = await fetch(`${API_URL}/products/all`);
+        const productsResponse = await fetch(`${API_URL}/products/all`, { headers: authBearerHeaders() });
         const products = await productsResponse.json();
 
         // Товары на проверке
@@ -2046,7 +2400,7 @@ async function loadAdminData() {
         }
 
         // Загружаем ВСЕ индивидуальные запросы
-        const requestsResponse = await fetch(`${API_URL}/custom-requests/all`);
+        const requestsResponse = await fetch(`${API_URL}/custom-requests/all`, { headers: authBearerHeaders() });
         const requests = await requestsResponse.json();
 
         // Запросы на проверке
@@ -2147,7 +2501,7 @@ async function loadAdminData() {
         }
 
         // Загружаем пользователей
-        const usersResponse = await fetch(`${API_URL}/users`);
+        const usersResponse = await fetch(`${API_URL}/users`, { headers: authBearerHeaders() });
         const users = await usersResponse.json();
 
         const usersList = document.getElementById('users-list');
@@ -2214,7 +2568,8 @@ async function loadAdminData() {
 async function approveProduct(productId) {
     try {
         const response = await fetch(`${API_URL}/products/${productId}/approve`, {
-            method: 'PATCH'
+            method: 'PATCH',
+            headers: authBearerHeaders()
         });
 
         if (!response.ok) {
@@ -2237,7 +2592,8 @@ async function approveProduct(productId) {
 async function rejectProduct(productId) {
     try {
         const response = await fetch(`${API_URL}/products/${productId}/reject`, {
-            method: 'PATCH'
+            method: 'PATCH',
+            headers: authBearerHeaders()
         });
 
         if (!response.ok) {
@@ -2260,7 +2616,8 @@ async function rejectProduct(productId) {
 async function approveCustomRequest(requestId) {
     try {
         const response = await fetch(`${API_URL}/custom-requests/${requestId}/approve`, {
-            method: 'PATCH'
+            method: 'PATCH',
+            headers: authBearerHeaders()
         });
 
         if (!response.ok) {
@@ -2281,7 +2638,8 @@ async function approveCustomRequest(requestId) {
 async function rejectCustomRequest(requestId) {
     try {
         const response = await fetch(`${API_URL}/custom-requests/${requestId}/reject`, {
-            method: 'PATCH'
+            method: 'PATCH',
+            headers: authBearerHeaders()
         });
 
         if (!response.ok) {
@@ -2303,7 +2661,7 @@ async function blockUser(userId) {
     try {
         const response = await fetch(`${API_URL}/users/${userId}/block`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({ isBlocked: true })
         });
 
@@ -2326,7 +2684,7 @@ async function unblockUser(userId) {
     try {
         const response = await fetch(`${API_URL}/users/${userId}/block`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({ isBlocked: false })
         });
 
@@ -2377,7 +2735,7 @@ async function contactSellerFromModal() {
     // Получаем имя покупателя
     let buyerName = 'Покупатель';
     try {
-        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`);
+        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`, { headers: authBearerHeaders() });
         const buyer = await buyerResponse.json();
         if (buyer && buyer.name) {
             buyerName = buyer.name;
@@ -2417,7 +2775,7 @@ async function uploadWorkFile() {
         try {
             const response = await fetch(`${API_URL}/purchases/${purchaseId}/file`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authJsonHeaders(),
                 body: JSON.stringify({
                     fileName: file.name,
                     fileData: e.target.result.split(',')[1] // Убираем data:image/...;base64,
@@ -2445,7 +2803,7 @@ async function uploadWorkFile() {
 // Просмотр файла работы
 async function viewPurchaseFile(purchaseId) {
     try {
-        const response = await fetch(`${API_URL}/purchases/${purchaseId}/file`);
+        const response = await fetch(`${API_URL}/purchases/${purchaseId}/file`, { headers: authBearerHeaders() });
 
         if (!response.ok) {
             showToast('Ошибка', 'Файл не найден', 'error');
@@ -2501,7 +2859,7 @@ async function submitReview() {
     try {
         const response = await fetch(`${API_URL}/reviews`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify({
                 purchaseId: parseInt(purchaseId),
                 buyerId: currentUser.id,
@@ -2539,10 +2897,10 @@ async function loadChatsList() {
 
     try {
         // Загружаем все покупки и продажи пользователя
-        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`, { headers: authBearerHeaders() });
         const purchases = await purchasesResponse.json();
         
-        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
         const sales = await salesResponse.json();
 
         const chatsListContent = document.getElementById('chats-list-content');
@@ -2606,7 +2964,7 @@ async function loadChatMessages() {
     if (!currentChatPurchaseId) return;
 
     try {
-        const response = await fetch(`${API_URL}/chat/${currentChatPurchaseId}`);
+        const response = await fetch(`${API_URL}/chat/${currentChatPurchaseId}`, { headers: authBearerHeaders() });
         const messages = await response.json();
 
         const messagesContainer = document.getElementById('chat-messages');
@@ -2675,7 +3033,7 @@ async function openChatFromNotification(notificationId) {
         console.log('[CHAT-NOTIFICATION] Открываем чат из уведомления:', notificationId);
 
         // Сначала получим уведомление, чтобы узнать ID покупки
-        const notificationsResponse = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const notificationsResponse = await fetch(`${API_URL}/notifications/${currentUser.id}`, { headers: authBearerHeaders() });
         const notifications = await notificationsResponse.json();
         const notification = notifications.find(n => n.id === notificationId);
 
@@ -2693,7 +3051,7 @@ async function openChatFromNotification(notificationId) {
         let title = null;
 
         // Получаем все покупки где пользователь продавец
-        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+        const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
         const sales = await salesResponse.json();
         console.log('[CHAT-NOTIFICATION] Продажи:', sales);
 
@@ -2704,7 +3062,7 @@ async function openChatFromNotification(notificationId) {
             // Мы продавец - открываем чат с покупателем
             purchaseId = sale.id;
             title = sale.title;
-            const buyerResponse = await fetch(`${API_URL}/users/${sale.buyerId}`);
+            const buyerResponse = await fetch(`${API_URL}/users/${sale.buyerId}`, { headers: authBearerHeaders() });
             const buyer = await buyerResponse.json();
             counterpartName = buyer.name || 'Покупатель';
         } else {
@@ -2738,7 +3096,7 @@ async function openChatFromNotification(notificationId) {
 async function openChatFromSale(purchaseId, buyerId, sellerId, title) {
     try {
         // Определяем имя собеседника (покупателя)
-        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`);
+        const buyerResponse = await fetch(`${API_URL}/users/${buyerId}`, { headers: authBearerHeaders() });
         const buyer = await buyerResponse.json();
         const counterpartName = buyer.name || 'Покупатель';
         
@@ -2769,7 +3127,7 @@ async function sendMessage() {
 
     try {
         // Получаем информацию о покупке для определения получателя
-        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`);
+        const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`, { headers: authBearerHeaders() });
         const purchases = await purchasesResponse.json();
         const purchase = purchases.find(p => p.id === currentChatPurchaseId);
         
@@ -2777,7 +3135,7 @@ async function sendMessage() {
         if (purchase) {
             receiverId = purchase.sellerId;
         } else {
-            const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`);
+            const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
             const sales = await salesResponse.json();
             const sale = sales.find(s => s.id === currentChatPurchaseId);
             receiverId = sale ? sale.buyerId : null;
@@ -2803,7 +3161,7 @@ async function sendMessage() {
 
         await fetch(`${API_URL}/chat`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authJsonHeaders(),
             body: JSON.stringify(payload)
         });
 
@@ -2896,7 +3254,7 @@ async function loadNotifications() {
     if (!currentUser) return;
 
     try {
-        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`, { headers: authBearerHeaders() });
 
         // Обработка ошибки 400/404
         if (!response.ok) {
@@ -3014,7 +3372,8 @@ function toggleNotifications() {
 async function markNotificationRead(notificationId) {
     try {
         await fetch(`${API_URL}/notifications/${notificationId}/read`, {
-            method: 'PATCH'
+            method: 'PATCH',
+            headers: authBearerHeaders()
         });
         loadNotifications();
     } catch (error) {
@@ -3027,13 +3386,14 @@ async function markAllNotificationsRead() {
     if (!currentUser) return;
 
     try {
-        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`);
+        const response = await fetch(`${API_URL}/notifications/${currentUser.id}`, { headers: authBearerHeaders() });
         const notifications = await response.json();
 
         for (const notification of notifications) {
             if (!notification.isRead) {
                 await fetch(`${API_URL}/notifications/${notification.id}/read`, {
-                    method: 'PATCH'
+                    method: 'PATCH',
+                    headers: authBearerHeaders()
                 });
             }
         }

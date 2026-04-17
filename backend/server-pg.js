@@ -104,6 +104,7 @@ const ROOT = path.join(__dirname, '..');
 const FRONTEND = path.join(ROOT, 'frontend');
 app.use('/css', express.static(path.join(FRONTEND, 'css')));
 app.use('/js', express.static(path.join(FRONTEND, 'js')));
+app.use('/fonts', express.static(path.join(FRONTEND, 'fonts')));
 app.use('/icons', express.static(path.join(FRONTEND, 'icons')));
 app.use('/icons', express.static(path.join(ROOT, 'icons')));
 

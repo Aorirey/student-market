@@ -339,10 +339,10 @@ function toggleProductType() {
 
     if (type === 'custom') {
         productFields.style.display = 'none';
-        customFields.style.display = 'block';
+        customFields.style.display = 'flex';
         btnSubmit.textContent = 'Создать запрос';
     } else {
-        productFields.style.display = 'block';
+        productFields.style.display = 'flex';
         customFields.style.display = 'none';
         btnSubmit.textContent = 'Добавить товар';
     }

@@ -3,6 +3,14 @@
    Серо-графитовая палитра, glassmorphism
    ============================================ */
 
+@font-face {
+    font-family: 'Russian Rail G Pro';
+    src: url("../fonts/RussianRail G Pro Regular_0.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* === CSS Custom Properties (единая тема) === */
 :root {
     /* Палитра фона */
@@ -54,8 +62,8 @@
     --radius-xl: 20px;
     --radius-pill: 9999px;
 
-    /* Типографика */
-    --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    /* Типографика (кириллица: Russian Rail G Pro) */
+    --font-sans: 'Russian Rail G Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --fs-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
     --fs-sm: clamp(0.8rem, 0.75rem + 0.25vw, 0.95rem);
     --fs-base: clamp(0.9rem, 0.85rem + 0.25vw, 1rem);
@@ -697,6 +705,27 @@ select.ui-custom-select__native {
     z-index: 6;
 }
 
+/* Полная ширина и размер шрифта как у полей формы «Добавить товар» */
+.ui-combobox--form-field {
+    width: 100%;
+    max-width: none;
+    flex: none;
+}
+
+.ui-combobox--form-field .ui-combobox__control {
+    border-radius: var(--radius-md);
+    min-height: 3.05rem;
+}
+
+.ui-combobox--form-field .ui-combobox__input {
+    font-size: var(--fs-sm);
+    padding: 0.55rem 0.4rem 0.55rem 1rem;
+}
+
+.ui-combobox--form-field .ui-combobox__menu {
+    max-height: min(320px, 55vh);
+}
+
 .ui-combobox.open {
     z-index: 80;
 }
@@ -839,6 +868,11 @@ select.ui-custom-select__native {
 .ui-combobox__option.is-selected {
     background: rgba(255, 255, 255, 0.1);
     font-weight: 600;
+}
+
+.ui-combobox__option--custom {
+    color: var(--primary);
+    font-weight: 500;
 }
 
 .ui-combobox__empty {
@@ -1076,6 +1110,11 @@ select:not(.ui-custom-select__native):disabled {
     background: linear-gradient(90deg, var(--cat-courses), #5a6169);
 }
 
+/* Тело карточки (не футер): иначе flex-элемент не сжимается и длинный .card-tag не получает ellipsis */
+.product-card > div:not(.card-footer) {
+    min-width: 0;
+}
+
 .card-tag {
     font-size: var(--fs-xs);
     font-weight: 600;
@@ -1083,7 +1122,13 @@ select:not(.ui-custom-select__native):disabled {
     letter-spacing: 0.05em;
     padding: 0.3rem 0.75rem;
     border-radius: var(--radius-pill);
-    width: fit-content;
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    box-sizing: border-box;
     background: var(--bg-surface);
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -1275,6 +1320,19 @@ select:not(.ui-custom-select__native):disabled {
 .add-product-form input::placeholder,
 .add-product-form textarea::placeholder {
     color: var(--text-muted);
+}
+
+/* Пара «подпись + поле» — одинаковый зазор между блоками задаётся gap у #product-fields / #custom-fields */
+.add-product-form__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.add-product-form__group label {
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    font-weight: 500;
 }
 
 .btn-add-product {
@@ -3277,13 +3335,6 @@ input[type="number"] {
     box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-#custom-fields label {
-    margin-bottom: 0;
-    color: var(--text-secondary);
-    font-size: var(--fs-sm);
-    display: block;
-}
-
 /* inline-стили из JS переопределяются через !important в JS */
 
 /* VK Login контейнер */
@@ -3298,13 +3349,14 @@ input[type="number"] {
 select#product-deadline,
 input#custom-file,
 textarea#custom-description {
-    padding: 0.75rem 1rem;
+    padding: 1rem 1.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     font-size: var(--fs-sm);
     background: var(--bg-surface);
     color: var(--text-main);
     width: 100%;
+    box-sizing: border-box;
     transition: all var(--transition-fast);
 }
 

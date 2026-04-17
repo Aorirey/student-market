@@ -481,6 +481,7 @@
                                 <option value="courses">Курсовые работы</option>
                             </select>
                             <select id="product-discipline" aria-label="Дисциплина">
+                                <option value="">Выберите из списка или введите свою дисциплину</option>
                                 <option value="Основы программирования">Основы программирования</option>
                                 <option value="Высшая математика">Высшая математика</option>
                                 <option value="Физика">Физика</option>
@@ -490,14 +491,16 @@
                                 <option value="Разработка ПО">Разработка ПО</option>
                             </select>
                             <input type="number" id="product-price" placeholder="Цена (₽)" required min="1" aria-label="Цена">
-                            <label for="product-deadline">Срок сдачи работы:</label>
-                            <select id="product-deadline">
-                                <option value="1">1 день</option>
-                                <option value="3">3 дня</option>
-                                <option value="7">7 дней</option>
-                                <option value="14">14 дней</option>
-                                <option value="30">30 дней</option>
-                            </select>
+                            <div class="add-product-form__group">
+                                <label for="product-deadline">Срок сдачи работы:</label>
+                                <select id="product-deadline">
+                                    <option value="1">1 день</option>
+                                    <option value="3">3 дня</option>
+                                    <option value="7">7 дней</option>
+                                    <option value="14">14 дней</option>
+                                    <option value="30">30 дней</option>
+                                </select>
+                            </div>
                         </div>
 
                         <!-- Поля для индивидуального запроса -->
@@ -721,10 +724,14 @@
                             <input type="text" id="custom-teacher" placeholder="ФИО преподавателя" aria-label="ФИО преподавателя">
                             <textarea id="custom-description" rows="4" placeholder="Опишите ваши требования к работе..." aria-label="Описание запроса"></textarea>
                             <input type="number" id="custom-budget" placeholder="Ваш бюджет (₽)" min="1" aria-label="Бюджет">
-                            <label for="custom-deadline">Срок сдачи работы:</label>
-                            <input type="text" id="custom-deadline" placeholder="Например: 15.05.2026 или 15 мая 2026" aria-label="Срок сдачи работы">
-                            <label for="custom-file">Прикрепить файл (методичку, пример):</label>
-                            <input type="file" id="custom-file" aria-label="Файл">
+                            <div class="add-product-form__group">
+                                <label for="custom-deadline">Срок сдачи работы:</label>
+                                <input type="text" id="custom-deadline" placeholder="Например: 15.05.2026 или 15 мая 2026" aria-label="Срок сдачи работы">
+                            </div>
+                            <div class="add-product-form__group">
+                                <label for="custom-file">Прикрепить файл (методичку, пример):</label>
+                                <input type="file" id="custom-file" aria-label="Файл">
+                            </div>
                         </div>
 
                         <button type="submit" class="btn-add-product" id="btn-submit-product">Добавить товар</button>
