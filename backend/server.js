@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
-const { authenticateToken, requireAdmin, requirePurchaseParticipant } = require('./auth');
+const { authenticateToken, optionalAuthenticateToken, requireAdmin, requireStaff, requirePurchaseParticipant } = require('./auth');
 const telegram = require('./telegram');
 
 const app = express();
@@ -221,23 +221,26 @@ if (dbMode === 'postgres') {
         }
 
         // Создание таблиц
-        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 10000, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, photo_url TEXT, login TEXT UNIQUE, vk_id BIGINT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, balance INTEGER DEFAULT 0, isAdmin INTEGER DEFAULT 0, isBlocked INTEGER DEFAULT 0, rating REAL DEFAULT 0, reviewCount INTEGER DEFAULT 0, photo_url TEXT, login TEXT UNIQUE, vk_id BIGINT UNIQUE, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         // Миграция для существующих БД
         try { db.run(`ALTER TABLE users ADD COLUMN photo_url TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN login TEXT UNIQUE`); } catch(e) {}
         try { db.run(`ALTER TABLE users ADD COLUMN vk_id BIGINT UNIQUE`); } catch(e) {}
+        try { db.run(`ALTER TABLE users ADD COLUMN isModerator INTEGER DEFAULT 0`); } catch(e) {}
 
         // Миграции для purchases (для существующих БД)
         try { db.run(`ALTER TABLE purchases ADD COLUMN sellerId TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE purchases ADD COLUMN deadline TEXT`); } catch(e) {}
         try { db.run(`ALTER TABLE purchases ADD COLUMN fileAttached INTEGER DEFAULT 0`); } catch(e) {}
         try { db.run(`ALTER TABLE purchases ADD COLUMN status TEXT DEFAULT 'active'`); } catch(e) {}
+        try { db.run(`ALTER TABLE purchases ADD COLUMN buyer_confirmed_at INTEGER`); } catch(e) {}
         try { db.run(`ALTER TABLE products ADD COLUMN university TEXT DEFAULT ''`); } catch(e) {}
         try { db.run(`ALTER TABLE products ADD COLUMN teacher TEXT DEFAULT ''`); } catch(e) {}
 
         db.run(`CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, university TEXT DEFAULT '', teacher TEXT DEFAULT '', category TEXT NOT NULL, discipline TEXT NOT NULL, price INTEGER NOT NULL, sellerId TEXT NOT NULL, sellerName TEXT NOT NULL, deadline TEXT, status TEXT DEFAULT 'pending', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
-        db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0, status TEXT DEFAULT 'active')`);
+        db.run(`CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, productId INTEGER NOT NULL, title TEXT NOT NULL, price INTEGER NOT NULL, buyerId TEXT NOT NULL, sellerId TEXT NOT NULL, deadline TEXT, date TEXT DEFAULT CURRENT_TIMESTAMP, fileAttached INTEGER DEFAULT 0, status TEXT DEFAULT 'active', buyer_confirmed_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS withdrawals (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, amount INTEGER NOT NULL, fee INTEGER NOT NULL, net_amount INTEGER NOT NULL, sbp_phone TEXT NOT NULL, status TEXT DEFAULT 'completed', createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, type TEXT NOT NULL, amount INTEGER NOT NULL, description TEXT, purchaseId INTEGER, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         try { db.run(`ALTER TABLE work_files ADD COLUMN uploadedBy TEXT`); } catch(e) {}
         db.run(`CREATE TABLE IF NOT EXISTS work_files (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, fileName TEXT NOT NULL, fileData TEXT NOT NULL, uploadedBy TEXT, uploadedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
@@ -250,6 +253,8 @@ if (dbMode === 'postgres') {
 
         db.run(`CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, purchaseId INTEGER NOT NULL, senderId TEXT NOT NULL, receiverId TEXT NOT NULL, message TEXT, fileName TEXT, fileData TEXT, fileType TEXT, isRead INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, isRead INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS support_tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, subject TEXT NOT NULL, category TEXT NOT NULL, body TEXT NOT NULL, status TEXT DEFAULT 'open', createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS support_ticket_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, ticketId INTEGER NOT NULL, authorId TEXT NOT NULL, message TEXT NOT NULL, isStaff INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
 
         // Создание администратора по умолчанию
         const adminExists = db.exec("SELECT * FROM users WHERE email = 'admin@studentmarket.ru'");
@@ -265,7 +270,47 @@ if (dbMode === 'postgres') {
         await telegram.initTelegramTable(db);
         await telegram.loadChatIdCache(db);
 
+        // Завершённые сделки до внедрения эскроу: считаем подтверждёнными «давно», чтобы суммы учитывались в выводе
+        try {
+            db.run(`UPDATE purchases SET buyer_confirmed_at = CAST(strftime('%s','now') AS INTEGER) - 400000 WHERE status = 'completed' AND buyer_confirmed_at IS NULL`);
+        } catch (e) { /* ignore */ }
+
         console.log('База данных инициализирована');
+    }
+
+    const WALLET_TOPUP_FEE = 0.07;
+    const WALLET_WITHDRAW_FEE = 0.07;
+    const SELLER_HOLD_SEC = 2 * 24 * 60 * 60;
+
+    function platformOwnerUserId() {
+        return process.env.PLATFORM_OWNER_USER_ID || 'admin';
+    }
+
+    function nowUnixSec() {
+        return Math.floor(Date.now() / 1000);
+    }
+
+    function getSellerMaturedTotal(dbConn, sellerId) {
+        const r = dbConn.exec(
+            `SELECT IFNULL(SUM(price), 0) FROM purchases WHERE sellerId = ? AND status = 'completed'
+             AND buyer_confirmed_at IS NOT NULL AND buyer_confirmed_at + ? <= ?`,
+            [sellerId, SELLER_HOLD_SEC, nowUnixSec()]
+        );
+        return r.length && r[0].values.length ? r[0].values[0][0] : 0;
+    }
+
+    function getWithdrawnTotal(dbConn, sellerId) {
+        const r = dbConn.exec(
+            `SELECT IFNULL(SUM(amount), 0) FROM withdrawals WHERE userId = ? AND status = 'completed'`,
+            [sellerId]
+        );
+        return r.length && r[0].values.length ? r[0].values[0][0] : 0;
+    }
+
+    function getSellerWithdrawable(dbConn, sellerId) {
+        const matured = getSellerMaturedTotal(dbConn, sellerId);
+        const withdrawn = getWithdrawnTotal(dbConn, sellerId);
+        return Math.max(0, matured - withdrawn);
     }
 
     function saveDatabase() {
@@ -309,12 +354,14 @@ if (dbMode === 'postgres') {
     // Товар - создание
     const productCreateValidator = [
         body('title').trim().notEmpty().withMessage('Название обязательно').isLength({ max: 200 }).withMessage('Название слишком длинное'),
+        body('university').trim().notEmpty().withMessage('Университет обязателен').isLength({ max: 400 }).withMessage('Название университета слишком длинное'),
+        body('teacher').trim().notEmpty().withMessage('ФИО преподавателя обязательно').isLength({ max: 200 }).withMessage('ФИО преподавателя слишком длинное'),
         body('category').trim().notEmpty().withMessage('Категория обязательна').isIn(['practices', 'labs', 'courses']).withMessage('Некорректная категория'),
         body('discipline').trim().notEmpty().withMessage('Дисциплина обязательна').isLength({ max: 100 }),
         body('price').notEmpty().withMessage('Цена обязательна').isInt({ min: 1, max: 1000000 }).withMessage('Некорректная цена'),
         body('sellerId').trim().notEmpty().withMessage('ID продавца обязателен'),
         body('sellerName').trim().notEmpty().withMessage('Имя продавца обязательно'),
-        body('deadline').optional().isISO8601().withMessage('Некорректная дата дедлайна'),
+        body('deadline').notEmpty().withMessage('Срок сдачи обязателен').isISO8601().withMessage('Некорректная дата дедлайна'),
         validate
     ];
 
@@ -363,10 +410,10 @@ if (dbMode === 'postgres') {
     // API: Пользователи
     // ============================================
 
-    // БЕЗОПАСНОСТЬ: Получение всех пользователей — только для администраторов
-    app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
+    // Получение всех пользователей — администратор или модератор
+    app.get('/api/users', authenticateToken, requireStaff, (req, res) => {
         try {
-            const result = db.exec("SELECT id, name, email, balance, isAdmin, isBlocked, createdAt FROM users");
+            const result = db.exec("SELECT id, name, email, balance, isAdmin, isModerator, isBlocked, createdAt FROM users");
             if (result.length === 0) return res.json([]);
             res.json(result[0].values.map(row => ({
                 id: sanitizeHTML(row[0]),
@@ -374,8 +421,9 @@ if (dbMode === 'postgres') {
                 email: sanitizeHTML(row[2]),
                 balance: row[3],
                 isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5]),
-                createdAt: row[6]
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                createdAt: row[7]
             })));
         } catch (error) {
             console.error('Ошибка получения пользователей:', error.message);
@@ -383,25 +431,40 @@ if (dbMode === 'postgres') {
         }
     });
 
-    app.get('/api/users/:id', authenticateToken, userIdValidator, (req, res) => {
+    app.get('/api/users/:id', optionalAuthenticateToken, userIdValidator, (req, res) => {
         try {
-            // Разрешаем пользователю смотреть свой профиль, админу — любые
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
-                return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свой профиль' });
-            }
-            const result = db.exec("SELECT id, name, email, balance, isAdmin, isBlocked, createdAt FROM users WHERE id = ?", [req.params.id]);
+            const result = db.exec(
+                'SELECT id, name, email, balance, isAdmin, isModerator, isBlocked, createdAt, photo_url FROM users WHERE id = ?',
+                [req.params.id]
+            );
             if (result.length === 0 || result[0].values.length === 0) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
             const row = result[0].values[0];
-            res.json({
+            const photoUrl = row[8] ? sanitizeHTML(row[8]) : null;
+            const isSelf = req.user && req.user.id === req.params.id;
+            const isAdmin = req.user && req.user.isAdmin;
+
+            if (isSelf || isAdmin) {
+                return res.json({
+                    id: sanitizeHTML(row[0]),
+                    name: sanitizeHTML(row[1]),
+                    email: sanitizeHTML(row[2]),
+                    balance: row[3],
+                    isAdmin: Boolean(row[4]),
+                    isModerator: Boolean(row[5]),
+                    isBlocked: Boolean(row[6]),
+                    createdAt: row[7],
+                    photoUrl
+                });
+            }
+
+            // Публичные данные продавца для других пользователей и гостей
+            return res.json({
                 id: sanitizeHTML(row[0]),
                 name: sanitizeHTML(row[1]),
-                email: sanitizeHTML(row[2]),
-                balance: row[3],
-                isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5]),
-                createdAt: row[6]
+                createdAt: row[7],
+                photoUrl
             });
         } catch (error) {
             console.error('Ошибка получения пользователя:', error.message);
@@ -424,7 +487,7 @@ if (dbMode === 'postgres') {
             const id = uuidv4();
 
             db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [id, sanitizeHTML(name), email.toLowerCase(), hashedPassword, 10000, 0, 0]);
+                [id, sanitizeHTML(name), email.toLowerCase(), hashedPassword, 0, 0, 0]);
             saveDatabase();
 
             // Логирование (A09)
@@ -434,7 +497,7 @@ if (dbMode === 'postgres') {
                 id,
                 name: sanitizeHTML(name),
                 email: email.toLowerCase(),
-                balance: 10000,
+                balance: 0,
                 isAdmin: false,
                 isBlocked: false
             });
@@ -475,7 +538,7 @@ if (dbMode === 'postgres') {
             const id = uuidv4();
 
             db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, login) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [id, sanitizeHTML(name), `${login.toLowerCase()}@studentmarket.ru`, hashedPassword, 10000, 0, 0, login.toLowerCase()]);
+                [id, sanitizeHTML(name), `${login.toLowerCase()}@studentmarket.ru`, hashedPassword, 0, 0, 0, login.toLowerCase()]);
             saveDatabase();
 
             console.log(`[AUTH] Зарегистрирован новый пользователь: ${login}`);
@@ -486,6 +549,7 @@ if (dbMode === 'postgres') {
                 name: sanitizeHTML(name),
                 email: `${login.toLowerCase()}@studentmarket.ru`,
                 isAdmin: false,
+                isModerator: false,
                 login: login.toLowerCase()
             };
             
@@ -496,8 +560,9 @@ if (dbMode === 'postgres') {
                 id,
                 name: sanitizeHTML(name),
                 email: `${login.toLowerCase()}@studentmarket.ru`,
-                balance: 10000,
+                balance: 0,
                 isAdmin: false,
+                isModerator: false,
                 isBlocked: false,
                 login: login.toLowerCase(),
                 token,
@@ -520,7 +585,7 @@ if (dbMode === 'postgres') {
 
             // Поиск пользователя по login ИЛИ email
             const result = db.exec(
-                "SELECT id, name, email, password, balance, isAdmin, isBlocked, login FROM users WHERE login = ? OR email = ?",
+                "SELECT id, name, email, password, balance, isAdmin, isBlocked, isModerator, login FROM users WHERE login = ? OR email = ?",
                 [login.toLowerCase(), login.toLowerCase()]
             );
 
@@ -546,20 +611,17 @@ if (dbMode === 'postgres') {
                 balance: row[4],
                 isAdmin: Boolean(row[5]),
                 isBlocked: Boolean(row[6]),
-                login: sanitizeHTML(row[7]) || ''
+                isModerator: Boolean(row[7]),
+                login: sanitizeHTML(row[8]) || ''
             };
 
-            if (user.isBlocked) {
-                console.log(`[AUTH] Попытка входа заблокированного пользователя: ${login}`);
-                return res.status(403).json({ error: 'Аккаунт заблокирован' });
-            }
-
-            // Генерация JWT токена
+            // Генерация JWT токена (заблокированные могут войти — ограничения на стороне API и UI)
             const tokenPayload = {
                 id: user.id,
                 name: user.name,
                 email: user.email,
                 isAdmin: user.isAdmin,
+                isModerator: user.isModerator,
                 login: user.login
             };
             
@@ -583,7 +645,7 @@ if (dbMode === 'postgres') {
             const { email, password } = req.body;
 
             // Поиск пользователя (параметризованный запрос - A03)
-            const result = db.exec("SELECT id, name, email, password, balance, isAdmin, isBlocked FROM users WHERE email = ?", [email.toLowerCase()]);
+            const result = db.exec("SELECT id, name, email, password, balance, isAdmin, isBlocked, isModerator, login FROM users WHERE email = ?", [email.toLowerCase()]);
             
             if (result.length === 0 || result[0].values.length === 0) {
                 console.log(`[AUTH] Неудачная попытка входа: ${email} (пользователь не найден)`);
@@ -600,20 +662,17 @@ if (dbMode === 'postgres') {
                 return res.status(401).json({ error: 'Неверный email или пароль' });
             }
             
-            const user = { 
-                id: sanitizeHTML(row[0]), 
-                name: sanitizeHTML(row[1]), 
-                email: sanitizeHTML(row[2]), 
-                balance: row[4], 
-                isAdmin: Boolean(row[5]), 
-                isBlocked: Boolean(row[6]) 
+            const user = {
+                id: sanitizeHTML(row[0]),
+                name: sanitizeHTML(row[1]),
+                email: sanitizeHTML(row[2]),
+                balance: row[4],
+                isAdmin: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                isModerator: Boolean(row[7]),
+                login: sanitizeHTML(row[8]) || ''
             };
-            
-            if (user.isBlocked) {
-                console.log(`[AUTH] Попытка входа заблокированного пользователя: ${email}`);
-                return res.status(403).json({ error: 'Аккаунт заблокирован' });
-            }
-            
+
             console.log(`[AUTH] Успешный вход: ${email}`);
             res.json(user);
         } catch (error) { 
@@ -635,7 +694,7 @@ if (dbMode === 'postgres') {
             db.run("UPDATE users SET balance = ? WHERE id = ?", [balance, req.params.id]);
             saveDatabase();
 
-            const result = db.exec("SELECT id, name, email, balance, isAdmin, isBlocked FROM users WHERE id = ?", [req.params.id]);
+            const result = db.exec("SELECT id, name, email, balance, isAdmin, isModerator, isBlocked FROM users WHERE id = ?", [req.params.id]);
             if (result.length === 0 || result[0].values.length === 0) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
@@ -648,7 +707,8 @@ if (dbMode === 'postgres') {
                 email: sanitizeHTML(row[2]),
                 balance: row[3],
                 isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5])
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6])
             });
         } catch (error) {
             console.error('Ошибка обновления баланса:', error.message);
@@ -656,8 +716,8 @@ if (dbMode === 'postgres') {
         }
     });
 
-    // БЕЗОПАСНОСТЬ: Блокировка пользователей — только для администраторов
-    app.patch('/api/users/:id/block', authenticateToken, requireAdmin, userIdValidator, (req, res) => {
+    // Блокировка пользователей — администратор или модератор (модератор не трогает админов и модераторов)
+    app.patch('/api/users/:id/block', authenticateToken, requireStaff, userIdValidator, (req, res) => {
         try {
             const { isBlocked } = req.body;
 
@@ -665,26 +725,72 @@ if (dbMode === 'postgres') {
                 return res.status(400).json({ error: 'Некорректное значение isBlocked' });
             }
 
+            const target = db.exec("SELECT isAdmin, isModerator FROM users WHERE id = ?", [req.params.id]);
+            if (!target.length || !target[0].values.length) {
+                return res.status(404).json({ error: 'Пользователь не найден' });
+            }
+            const [tAdmin, tMod] = target[0].values[0];
+            if (Boolean(tAdmin)) {
+                return res.status(403).json({ error: 'Нельзя блокировать администратора' });
+            }
+            if (Boolean(tMod) && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Блокировать модератора может только администратор' });
+            }
+
             db.run("UPDATE users SET isBlocked = ? WHERE id = ?", [isBlocked ? 1 : 0, req.params.id]);
             saveDatabase();
 
-            const result = db.exec("SELECT id, name, email, balance, isAdmin, isBlocked FROM users WHERE id = ?", [req.params.id]);
+            const result = db.exec("SELECT id, name, email, balance, isAdmin, isModerator, isBlocked FROM users WHERE id = ?", [req.params.id]);
             if (result.length === 0 || result[0].values.length === 0) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
 
             const row = result[0].values[0];
-            console.log(`[AUDIT] Пользователь ${row[0]} ${isBlocked ? 'заблокирован' : 'разблокирован'} администратором ${req.user.id}`);
+            console.log(`[AUDIT] Пользователь ${row[0]} ${isBlocked ? 'заблокирован' : 'разблокирован'} пользователем ${req.user.id}`);
             res.json({
                 id: sanitizeHTML(row[0]),
                 name: sanitizeHTML(row[1]),
                 email: sanitizeHTML(row[2]),
                 balance: row[3],
                 isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5])
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6])
             });
         } catch (error) {
             console.error('Ошибка блокировки:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.patch('/api/users/:id/moderator', authenticateToken, requireAdmin, userIdValidator, (req, res) => {
+        try {
+            const { isModerator } = req.body;
+            if (typeof isModerator !== 'boolean') {
+                return res.status(400).json({ error: 'Некорректное значение isModerator' });
+            }
+            const target = db.exec("SELECT isAdmin FROM users WHERE id = ?", [req.params.id]);
+            if (!target.length || !target[0].values.length) {
+                return res.status(404).json({ error: 'Пользователь не найден' });
+            }
+            if (Boolean(target[0].values[0][0])) {
+                return res.status(400).json({ error: 'Роль администратора задаётся отдельно' });
+            }
+            db.run("UPDATE users SET isModerator = ? WHERE id = ?", [isModerator ? 1 : 0, req.params.id]);
+            saveDatabase();
+            const result = db.exec("SELECT id, name, email, balance, isAdmin, isModerator, isBlocked FROM users WHERE id = ?", [req.params.id]);
+            const row = result[0].values[0];
+            console.log(`[AUDIT] Пользователь ${row[0]} isModerator=${isModerator} администратором ${req.user.id}`);
+            res.json({
+                id: sanitizeHTML(row[0]),
+                name: sanitizeHTML(row[1]),
+                email: sanitizeHTML(row[2]),
+                balance: row[3],
+                isAdmin: Boolean(row[4]),
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6])
+            });
+        } catch (error) {
+            console.error('Ошибка назначения модератора:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
@@ -751,7 +857,7 @@ if (dbMode === 'postgres') {
             db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
             saveDatabase();
 
-            const result = db.exec("SELECT id, name, email, balance, isAdmin, isBlocked, photo_url, login FROM users WHERE id = ?", [req.params.id]);
+            const result = db.exec("SELECT id, name, email, balance, isAdmin, isModerator, isBlocked, photo_url, login FROM users WHERE id = ?", [req.params.id]);
             if (result.length === 0 || result[0].values.length === 0) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
@@ -764,9 +870,10 @@ if (dbMode === 'postgres') {
                 email: sanitizeHTML(row[2]),
                 balance: row[3],
                 isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5]),
-                photo_url: sanitizeHTML(row[6]),
-                login: sanitizeHTML(row[7]) || ''
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                photo_url: sanitizeHTML(row[7]),
+                login: sanitizeHTML(row[8]) || ''
             });
         } catch (error) {
             console.error('Ошибка обновления профиля:', error.message);
@@ -784,7 +891,7 @@ if (dbMode === 'postgres') {
     app.get('/api/auth/me', authenticateToken, async (req, res) => {
         try {
             const result = db.exec(
-                "SELECT id, name, email, balance, isAdmin, isBlocked, login, photo_url FROM users WHERE id = ?",
+                "SELECT id, name, email, balance, isAdmin, isModerator, isBlocked, login, photo_url FROM users WHERE id = ?",
                 [req.user.id]
             );
 
@@ -799,9 +906,10 @@ if (dbMode === 'postgres') {
                 email: sanitizeHTML(row[2]),
                 balance: row[3],
                 isAdmin: Boolean(row[4]),
-                isBlocked: Boolean(row[5]),
-                login: sanitizeHTML(row[6]) || '',
-                photo_url: sanitizeHTML(row[7])
+                isModerator: Boolean(row[5]),
+                isBlocked: Boolean(row[6]),
+                login: sanitizeHTML(row[7]) || '',
+                photo_url: sanitizeHTML(row[8])
             });
         } catch (error) {
             console.error('Ошибка получения пользователя:', error.message);
@@ -820,9 +928,8 @@ if (dbMode === 'postgres') {
 
             const decoded = jwt.verify(refreshToken, JWT_SECRET);
             
-            // Проверяем, что пользователь всё ещё существует и не заблокирован
             const result = db.exec(
-                "SELECT id, name, email, balance, isAdmin, isBlocked, login FROM users WHERE id = ?",
+                "SELECT id, name, email, balance, isAdmin, isBlocked, isModerator, login FROM users WHERE id = ?",
                 [decoded.id]
             );
 
@@ -831,16 +938,14 @@ if (dbMode === 'postgres') {
             }
 
             const row = result[0].values[0];
-            if (Boolean(row[5])) { // isBlocked
-                return res.status(403).json({ error: 'Аккаунт заблокирован' });
-            }
 
             const tokenPayload = {
                 id: row[0],
                 name: sanitizeHTML(row[1]),
                 email: sanitizeHTML(row[2]),
                 isAdmin: Boolean(row[4]),
-                login: sanitizeHTML(row[6]) || ''
+                isModerator: Boolean(row[6]),
+                login: sanitizeHTML(row[7]) || ''
             };
 
             const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -1041,31 +1146,51 @@ if (dbMode === 'postgres') {
             const fullName = `${vkUser.first_name || ''} ${vkUser.last_name || ''}`.trim() || `user_${user_id}`;
             const photoUrl = vkUser.photo_200 || vkUser.photo_100 || null;
 
-            let result = db.exec("SELECT * FROM users WHERE vk_id = ?", [user_id]);
+            let result = db.exec(
+                "SELECT id, name, email, balance, isAdmin, isBlocked, isModerator, photo_url, login, vk_id FROM users WHERE vk_id = ?",
+                [user_id]
+            );
 
             if (result.length === 0 || result[0].values.length === 0) {
                 const hashedPassword = await bcrypt.hash(uuidv4(), 10);
                 const newId = uuidv4();
                 const login = `vk_${user_id}`;
                 db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, photo_url, login, vk_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [newId, sanitizeHTML(fullName), `${user_id}@vk.user`, hashedPassword, 10000, 0, 0, photoUrl, login, user_id]);
+                    [newId, sanitizeHTML(fullName), `${user_id}@vk.user`, hashedPassword, 0, 0, 0, photoUrl, login, user_id]);
                 saveDatabase();
-                result = db.exec("SELECT * FROM users WHERE id = ?", [newId]);
+                result = db.exec(
+                    "SELECT id, name, email, balance, isAdmin, isBlocked, isModerator, photo_url, login, vk_id FROM users WHERE id = ?",
+                    [newId]
+                );
                 console.log(`[VK] Создан: ${fullName}`);
             } else {
                 console.log(`[VK] Вход: ${fullName}`);
             }
 
             const row = result[0].values[0];
-            res.json({
+            const vkUserPayload = {
                 id: sanitizeHTML(row[0]),
                 name: sanitizeHTML(row[1]),
                 email: sanitizeHTML(row[2]),
-                balance: row[4],
-                isAdmin: Boolean(row[5]),
-                isBlocked: Boolean(row[6]),
-                photoUrl: row[8] || photoUrl,
-                login: row[9] || `vk_${user_id}`
+                isAdmin: Boolean(row[4]),
+                isModerator: Boolean(row[6]),
+                login: sanitizeHTML(row[8]) || `vk_${user_id}`
+            };
+            const token = jwt.sign(vkUserPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+            const refreshToken = jwt.sign(vkUserPayload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN });
+
+            res.json({
+                id: vkUserPayload.id,
+                name: vkUserPayload.name,
+                email: vkUserPayload.email,
+                balance: row[3],
+                isAdmin: vkUserPayload.isAdmin,
+                isModerator: vkUserPayload.isModerator,
+                isBlocked: Boolean(row[5]),
+                photoUrl: row[7] || photoUrl,
+                login: vkUserPayload.login,
+                token,
+                refreshToken
             });
         } catch (error) {
             console.error('[VK] Ошибка:', error.message);
@@ -1156,6 +1281,30 @@ if (dbMode === 'postgres') {
         }
     });
 
+    // Должен быть выше /api/products/:id, иначе сегмент «all» попадает в :id и валидация ломает админку.
+    app.get('/api/products/all', authenticateToken, requireAdmin, (req, res) => {
+        try {
+            const result = db.exec("SELECT * FROM products");
+            res.json(result.length > 0 ? result[0].values.map(row => ({
+                id: row[0],
+                title: sanitizeHTML(row[1]),
+                university: sanitizeHTML(row[2] || ''),
+                teacher: sanitizeHTML(row[3] || ''),
+                category: sanitizeHTML(row[4]),
+                discipline: sanitizeHTML(row[5]),
+                price: row[6],
+                sellerId: sanitizeHTML(row[7]),
+                sellerName: sanitizeHTML(row[8]),
+                deadline: row[9],
+                status: sanitizeHTML(row[10]),
+                createdAt: row[11]
+            })) : []);
+        } catch (error) {
+            console.error('Ошибка получения всех товаров:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
     // GET /api/products/:id — получение одного товара по ID
     const productIdValidator = [
         param('id').notEmpty().isInt({ min: 1 }).withMessage('Некорректный ID товара'),
@@ -1185,30 +1334,6 @@ if (dbMode === 'postgres') {
             });
         } catch (error) {
             console.error('Ошибка получения товара:', error.message);
-            res.status(500).json({ error: 'Ошибка сервера' });
-        }
-    });
-
-    // БЕЗОПАСНОСТЬ: Просмотр всех товаров (включая pending/rejected) — только для администраторов
-    app.get('/api/products/all', authenticateToken, requireAdmin, (req, res) => {
-        try {
-            const result = db.exec("SELECT * FROM products");
-            res.json(result.length > 0 ? result[0].values.map(row => ({
-                id: row[0],
-                title: sanitizeHTML(row[1]),
-                university: sanitizeHTML(row[2] || ''),
-                teacher: sanitizeHTML(row[3] || ''),
-                category: sanitizeHTML(row[4]),
-                discipline: sanitizeHTML(row[5]),
-                price: row[6],
-                sellerId: sanitizeHTML(row[7]),
-                sellerName: sanitizeHTML(row[8]),
-                deadline: row[9],
-                status: sanitizeHTML(row[10]),
-                createdAt: row[11]
-            })) : []);
-        } catch (error) {
-            console.error('Ошибка получения всех товаров:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
@@ -1247,6 +1372,11 @@ if (dbMode === 'postgres') {
             // Проверяем, что авторизованный пользователь — это продавец
             if (req.user.id !== sellerId && !req.user.isAdmin) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать товары только от своего имени' });
+            }
+
+            const sellerBlock = db.exec('SELECT isBlocked FROM users WHERE id = ?', [sellerId]);
+            if (sellerBlock.length && sellerBlock[0].values.length && Boolean(sellerBlock[0].values[0][0])) {
+                return res.status(403).json({ error: 'Аккаунт ограничен: вы не можете выставлять товары. Обратитесь в техподдержку.' });
             }
 
             db.run("INSERT INTO products (title, university, teacher, category, discipline, price, sellerId, sellerName, deadline, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
@@ -1376,6 +1506,13 @@ if (dbMode === 'postgres') {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого товара' });
             }
 
+            if (req.user.id === sellerId && !req.user.isAdmin) {
+                const sellerBlock = db.exec('SELECT isBlocked FROM users WHERE id = ?', [sellerId]);
+                if (sellerBlock.length && sellerBlock[0].values.length && Boolean(sellerBlock[0].values[0][0])) {
+                    return res.status(403).json({ error: 'Аккаунт ограничен: вы не можете редактировать товары.' });
+                }
+            }
+
             const { title, category, discipline, price, deadline } = req.body;
             const updates = [];
             const params = [];
@@ -1484,11 +1621,12 @@ if (dbMode === 'postgres') {
                 price: row[3],
                 buyerId: sanitizeHTML(row[4]),
                 sellerId: sanitizeHTML(row[5]),
-                sellerName: sanitizeHTML(row[9]),
                 deadline: row[6],
                 date: row[7],
                 fileAttached: Boolean(row[8]),
-                status: sanitizeHTML(row[10] || 'active')
+                status: sanitizeHTML(row[9] || 'active'),
+                buyerConfirmedAt: row[10] != null ? row[10] : null,
+                sellerName: sanitizeHTML(row[11] || '')
             })) : []);
         } catch (error) {
             console.error('Ошибка получения покупок:', error.message);
@@ -1499,11 +1637,6 @@ if (dbMode === 'postgres') {
     // БЕЗОПАСНОСТЬ: Продажи — только для авторизованного пользователя и только свои
     app.get('/api/users/:id/sales', authenticateToken, userIdValidator, (req, res) => {
         try {
-            // Проверяем, что пользователь запрашивает свои продажи
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
-                return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои продажи' });
-            }
-
             console.log(`[SALES] Запрос продаж для sellerId: ${req.params.id}`);
             const result = db.exec(`
                 SELECT p.*, u.name as buyerName
@@ -1518,12 +1651,13 @@ if (dbMode === 'postgres') {
                 title: sanitizeHTML(row[2]),
                 price: row[3],
                 buyerId: sanitizeHTML(row[4]),
-                buyerName: sanitizeHTML(row[9]),
                 sellerId: sanitizeHTML(row[5]),
                 deadline: row[6],
                 date: row[7],
                 fileAttached: Boolean(row[8]),
-                status: sanitizeHTML(row[10] || 'active')
+                status: sanitizeHTML(row[9] || 'active'),
+                buyerConfirmedAt: row[10] != null ? row[10] : null,
+                buyerName: sanitizeHTML(row[11] || '')
             })) : []);
         } catch (error) {
             console.error('Ошибка получения продаж:', error.message);
@@ -1581,36 +1715,23 @@ if (dbMode === 'postgres') {
                 return res.status(409).json({ error: 'Вы уже купили этот товар' });
             }
 
-            // Транзакция: списываем у покупателя и начисляем продавцу
+            // Списываем у покупателя; средства удерживаются до подтверждения покупателем (эскроу)
             const newBuyerBalance = buyerBalance - price;
             db.run("UPDATE users SET balance = ? WHERE id = ?", [newBuyerBalance, buyerId]);
-
-            // Получаем текущий баланс продавца и начисляем
-            const sellerBalanceResult = db.exec("SELECT balance FROM users WHERE id = ?", [sellerId]);
-            const sellerBalance = sellerBalanceResult[0].values[0][0];
-            const newSellerBalance = sellerBalance + price;
-            db.run("UPDATE users SET balance = ? WHERE id = ?", [newSellerBalance, sellerId]);
 
             // Создаём запись о покупке
             db.run("INSERT INTO purchases (productId, title, price, buyerId, sellerId, deadline) VALUES (?, ?, ?, ?, ?, ?)",
                 [productId, sanitizeHTML(title), price, sanitizeHTML(buyerId), sanitizeHTML(sellerId), deadline || null]);
             saveDatabase();
 
-            // Записываем транзакции
-            db.run("INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)",
-                [buyerId, 'debit', price, `Покупка товара #${productId}`, null]);
-            const txResult = db.exec("SELECT last_insert_rowid()");
-            const purchaseIdRef = txResult ? db.exec("SELECT last_insert_rowid()")[0].values[0][0] : null;
-
-            db.run("INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)",
-                [sellerId, 'credit', price, `Продажа товара #${productId}`, purchaseIdRef]);
-
             const result = db.exec("SELECT last_insert_rowid()");
             const purchaseId = result[0].values[0][0];
 
+            db.run("INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)",
+                [buyerId, 'debit', price, `Оплата заказа #${purchaseId} (эскроу)`, purchaseId]);
+
             console.log(`[PURCHASE] Создана покупка: ${purchaseId}, покупатель: ${buyerId}, продавец: ${sellerId}, сумма: ${price}`);
-            console.log(`[BALANCE] Баланс покупателя ${buyerId}: ${buyerBalance} -> ${newBuyerBalance}`);
-            console.log(`[BALANCE] Баланс продавца ${sellerId}: ${sellerBalance} -> ${newSellerBalance}`);
+            console.log(`[BALANCE] Баланс покупателя ${buyerId}: ${buyerBalance} -> ${newBuyerBalance} (эскроу)`);
 
             // Форматируем дату срока сдачи
             const deadlineFormatted = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
@@ -1671,15 +1792,61 @@ if (dbMode === 'postgres') {
                 price: row[3],
                 buyerId: sanitizeHTML(row[4]),
                 sellerId: sanitizeHTML(row[5]),
-                buyerName: sanitizeHTML(row[10]),
-                sellerName: sanitizeHTML(row[9]),
                 deadline: row[6],
                 date: row[7],
                 fileAttached: Boolean(row[8]),
-                status: sanitizeHTML(row[11] || 'active')
+                status: sanitizeHTML(row[9] || 'active'),
+                buyerConfirmedAt: row[10] != null ? row[10] : null,
+                sellerName: sanitizeHTML(row[11] || ''),
+                buyerName: sanitizeHTML(row[12] || '')
             });
         } catch (error) {
             console.error('Ошибка получения покупки:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // POST /api/purchases/:id/confirm-completion — покупатель подтверждает выполнение (деньги выходят из эскроу в пользу продавца, учёт для вывода через 2 суток)
+    app.post('/api/purchases/:id/confirm-completion', authenticateToken, purchaseIdValidator, (req, res) => {
+        try {
+            const result = db.exec(
+                'SELECT buyerId, sellerId, status, fileAttached, buyer_confirmed_at, price, title FROM purchases WHERE id = ?',
+                [req.params.id]
+            );
+            if (!result.length || !result[0].values.length) {
+                return res.status(404).json({ error: 'Покупка не найдена' });
+            }
+            const [buyerId, sellerId, status, fileAttached, buyerConfirmedAt, price, title] = result[0].values[0];
+
+            if (req.user.id !== buyerId && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Подтвердить выполнение может только покупатель' });
+            }
+            if (status !== 'active') {
+                return res.status(400).json({ error: 'Заказ уже закрыт или отменён' });
+            }
+            if (!fileAttached) {
+                return res.status(400).json({ error: 'Продавец ещё не прикрепил работу' });
+            }
+            if (buyerConfirmedAt != null) {
+                return res.status(400).json({ error: 'Выполнение уже подтверждено' });
+            }
+
+            const ts = nowUnixSec();
+            db.run('UPDATE purchases SET buyer_confirmed_at = ?, status = ? WHERE id = ?', [ts, 'completed', req.params.id]);
+            saveDatabase();
+
+            db.run(
+                'INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)',
+                [sellerId, 'credit', price, `Заказ #${req.params.id}: средства доступны к выводу через 2 дня`, req.params.id]
+            );
+            saveDatabase();
+
+            const decodedTitle = decodeHTML(String(title || ''));
+            createNotification(sellerId, 'Заказ подтверждён', `Покупатель подтвердил выполнение «${decodedTitle}». Сумма ${price} ₽ будет доступна к выводу через 2 дня.`, 'purchase');
+
+            res.json({ message: 'Выполнение подтверждено', buyerConfirmedAt: ts, status: 'completed' });
+        } catch (error) {
+            console.error('Ошибка подтверждения заказа:', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
@@ -1700,16 +1867,12 @@ if (dbMode === 'postgres') {
 
             // Удалить может: админ, или покупатель (если файл ещё не прикреплён и статус active)
             if (req.user.isAdmin) {
-                // Админ может отменить и вернуть средства
-                // Возвращаем средства покупателю и списываем у продавца
+                // Админ: возврат покупателю из эскроу (продавец не получал средства на баланс)
                 const purchasePrice = db.exec("SELECT price, buyerId, sellerId FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
-                const [price, bId, sId] = purchasePrice;
+                const [price, bId] = purchasePrice;
 
                 const buyerBal = db.exec("SELECT balance FROM users WHERE id = ?", [bId])[0].values[0][0];
-                const sellerBal = db.exec("SELECT balance FROM users WHERE id = ?", [sId])[0].values[0][0];
-
                 db.run("UPDATE users SET balance = ? WHERE id = ?", [buyerBal + price, bId]);
-                db.run("UPDATE users SET balance = ? WHERE id = ?", [sellerBal - price, sId]);
 
                 db.run("DELETE FROM purchases WHERE id = ?", [req.params.id]);
                 saveDatabase();
@@ -1729,15 +1892,12 @@ if (dbMode === 'postgres') {
                 return res.status(400).json({ error: `Нельзя удалить покупку в статусе "${status}"` });
             }
 
-            // Возвращаем средства
-            const purchasePrice = db.exec("SELECT price, sellerId FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
-            const [price, sId] = purchasePrice;
+            // Возвращаем средства покупателю из эскроу
+            const purchasePrice = db.exec("SELECT price FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
+            const [price] = purchasePrice;
 
             const buyerBal = db.exec("SELECT balance FROM users WHERE id = ?", [buyerId])[0].values[0][0];
-            const sellerBal = db.exec("SELECT balance FROM users WHERE id = ?", [sId])[0].values[0][0];
-
             db.run("UPDATE users SET balance = ? WHERE id = ?", [buyerBal + price, buyerId]);
-            db.run("UPDATE users SET balance = ? WHERE id = ?", [sellerBal - price, sId]);
 
             db.run("DELETE FROM purchases WHERE id = ?", [req.params.id]);
             saveDatabase();
@@ -1758,7 +1918,7 @@ if (dbMode === 'postgres') {
 
     app.patch('/api/purchases/:id/status', authenticateToken, purchaseStatusValidator, (req, res) => {
         try {
-            const result = db.exec("SELECT buyerId, sellerId, status FROM purchases WHERE id = ?", [req.params.id]);
+            const result = db.exec("SELECT buyerId, sellerId, status, buyer_confirmed_at FROM purchases WHERE id = ?", [req.params.id]);
 
             if (!result.length || !result[0].values.length) {
                 return res.status(404).json({ error: 'Покупка не найдена' });
@@ -1768,13 +1928,19 @@ if (dbMode === 'postgres') {
             const buyerId = row[0];
             const sellerId = row[1];
             const currentStatus = row[2];
+            const buyerConfirmedAt = row[3];
 
             const newStatus = req.body.status;
 
-            // Сменить статус может: админ, продавец (completed/cancelled), покупатель (cancelled)
+            // Сменить статус может: админ, продавец (cancelled/disputed), покупатель (cancelled)
             const isParticipant = req.user.id === buyerId || req.user.id === sellerId;
             if (!req.user.isAdmin && !isParticipant) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
+            }
+
+            // Завершение сделки — только через POST .../confirm-completion (покупатель)
+            if (newStatus === 'completed' && !req.user.isAdmin) {
+                return res.status(400).json({ error: 'Подтвердите выполнение заказа кнопкой в разделе «Покупатель» или в чате' });
             }
 
             // Покупатель может только отменить
@@ -1782,21 +1948,19 @@ if (dbMode === 'postgres') {
                 return res.status(403).json({ error: 'Покупатель может только отменить покупку' });
             }
 
-            // Если отмена — возвращаем средства
+            // Если отмена — возвращаем средства из эскроу покупателю
             if (newStatus === 'cancelled' && currentStatus === 'active') {
-                const purchaseData = db.exec("SELECT price, buyerId, sellerId FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
-                const [price, bId, sId] = purchaseData;
+                if (buyerConfirmedAt != null) {
+                    return res.status(400).json({ error: 'Нельзя отменить заказ после подтверждения выполнения' });
+                }
+                const purchaseData = db.exec("SELECT price, buyerId FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
+                const [price, bId] = purchaseData;
 
                 const buyerBal = db.exec("SELECT balance FROM users WHERE id = ?", [bId])[0].values[0][0];
-                const sellerBal = db.exec("SELECT balance FROM users WHERE id = ?", [sId])[0].values[0][0];
-
                 db.run("UPDATE users SET balance = ? WHERE id = ?", [buyerBal + price, bId]);
-                db.run("UPDATE users SET balance = ? WHERE id = ?", [sellerBal - price, sId]);
 
                 db.run("INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)",
                     [bId, 'credit', price, `Возврат за отмену покупки #${req.params.id}`, req.params.id]);
-                db.run("INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)",
-                    [sId, 'debit', price, `Возврат за отмену покупки #${req.params.id}`, req.params.id]);
             }
 
             db.run("UPDATE purchases SET status = ? WHERE id = ?", [newStatus, req.params.id]);
@@ -1806,6 +1970,156 @@ if (dbMode === 'postgres') {
             res.json({ message: `Статус покупки изменён на "${newStatus}"` });
         } catch (error) {
             console.error('Ошибка обновления статуса покупки:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    const walletTopupValidator = [
+        body('netAmount').isInt({ min: 1, max: 500000 }).withMessage('Сумма от 1 до 500000 ₽'),
+        validate
+    ];
+
+    const walletWithdrawValidator = [
+        body('amount').isInt({ min: 10, max: 5000000 }).withMessage('Сумма вывода некорректна'),
+        body('phone').trim().notEmpty().withMessage('Укажите телефон для СБП'),
+        validate
+    ];
+
+    app.get('/api/wallet', authenticateToken, (req, res) => {
+        try {
+            const uid = req.user.id;
+            const balR = db.exec('SELECT balance FROM users WHERE id = ?', [uid]);
+            const balance = balR.length && balR[0].values.length ? balR[0].values[0][0] : 0;
+
+            const matured = getSellerMaturedTotal(db, uid);
+            const withdrawn = getWithdrawnTotal(db, uid);
+            const withdrawable = Math.max(0, matured - withdrawn);
+
+            const maturingR = db.exec(
+                `SELECT IFNULL(SUM(price), 0) FROM purchases WHERE sellerId = ? AND status = 'completed'
+                 AND buyer_confirmed_at IS NOT NULL AND buyer_confirmed_at + ? > ?`,
+                [uid, SELLER_HOLD_SEC, nowUnixSec()]
+            );
+            const maturing = maturingR.length && maturingR[0].values.length ? maturingR[0].values[0][0] : 0;
+
+            const awaitR = db.exec(
+                `SELECT IFNULL(SUM(price), 0) FROM purchases WHERE sellerId = ? AND status = 'active' AND fileAttached = 1 AND buyer_confirmed_at IS NULL`,
+                [uid]
+            );
+            const sellerAwaitingBuyerConfirm = awaitR.length && awaitR[0].values.length ? awaitR[0].values[0][0] : 0;
+
+            res.json({
+                balance,
+                topupFeePercent: Math.round(WALLET_TOPUP_FEE * 100),
+                withdrawFeePercent: Math.round(WALLET_WITHDRAW_FEE * 100),
+                sellerHoldDays: 2,
+                sellerWithdrawable: withdrawable,
+                sellerMaturing: maturing,
+                sellerAwaitingBuyerConfirm,
+                note: 'Для РФ: подключите ЮKassa, Тинькофф или другой эквайринг с СБП; эндпоинт пополнения сейчас демонстрирует успешное зачисление без реальной оплаты.'
+            });
+        } catch (error) {
+            console.error('Ошибка /api/wallet', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.post('/api/wallet/topup', authenticateToken, walletTopupValidator, (req, res) => {
+        try {
+            const netAmount = req.body.netAmount;
+            const fee = Math.max(0, Math.round(netAmount * WALLET_TOPUP_FEE));
+            const grossAmount = netAmount + fee;
+            const ownerId = platformOwnerUserId();
+
+            const buyerRow = db.exec('SELECT balance FROM users WHERE id = ?', [req.user.id]);
+            if (!buyerRow.length || !buyerRow[0].values.length) {
+                return res.status(404).json({ error: 'Пользователь не найден' });
+            }
+            const buyerBal = buyerRow[0].values[0][0];
+
+            const ownerRow = db.exec('SELECT balance FROM users WHERE id = ?', [ownerId]);
+            if (!ownerRow.length || !ownerRow[0].values.length) {
+                return res.status(500).json({ error: 'Служебный счёт владельца (PLATFORM_OWNER_USER_ID) не найден' });
+            }
+            const ownerBal = ownerRow[0].values[0][0];
+
+            db.run('UPDATE users SET balance = ? WHERE id = ?', [buyerBal + netAmount, req.user.id]);
+            db.run('UPDATE users SET balance = ? WHERE id = ?', [ownerBal + fee, ownerId]);
+            db.run(
+                'INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)',
+                [req.user.id, 'credit', netAmount, `Пополнение баланса (комиссия площадки ${fee} ₽)`, null]
+            );
+            db.run(
+                'INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)',
+                [ownerId, 'credit', fee, `Комиссия пополнения с пользователя ${req.user.id}`, null]
+            );
+            saveDatabase();
+
+            res.json({
+                message: 'Баланс пополнен (демо: без реального списания с карты)',
+                credited: netAmount,
+                fee,
+                gross: grossAmount,
+                balance: buyerBal + netAmount
+            });
+        } catch (e) {
+            console.error('[WALLET] topup', e.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.post('/api/wallet/withdraw-sbp', authenticateToken, walletWithdrawValidator, (req, res) => {
+        try {
+            const amount = req.body.amount;
+            const phoneDigits = String(req.body.phone).replace(/\D/g, '');
+            if (phoneDigits.length !== 11 || !phoneDigits.startsWith('7')) {
+                return res.status(400).json({ error: 'Телефон для СБП: 11 цифр, формат 79001234567' });
+            }
+            const phone = `+${phoneDigits}`;
+
+            const withdrawable = getSellerWithdrawable(db, req.user.id);
+            if (amount > withdrawable) {
+                return res.status(400).json({ error: `Доступно к выводу: ${withdrawable} ₽` });
+            }
+
+            const fee = Math.max(1, Math.round(amount * WALLET_WITHDRAW_FEE));
+            const netPayout = amount - fee;
+            if (netPayout < 1) {
+                return res.status(400).json({ error: 'Сумма после комиссии слишком мала' });
+            }
+
+            const ownerId = platformOwnerUserId();
+            const ownerRow = db.exec('SELECT balance FROM users WHERE id = ?', [ownerId]);
+            if (!ownerRow.length || !ownerRow[0].values.length) {
+                return res.status(500).json({ error: 'Служебный счёт владельца не найден' });
+            }
+            const ownerBal = ownerRow[0].values[0][0];
+
+            db.run(
+                `INSERT INTO withdrawals (userId, amount, fee, net_amount, sbp_phone, status) VALUES (?, ?, ?, ?, ?, 'completed')`,
+                [req.user.id, amount, fee, netPayout, phone]
+            );
+            db.run('UPDATE users SET balance = balance + ? WHERE id = ?', [fee, ownerId]);
+            db.run(
+                'INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)',
+                [req.user.id, 'debit', amount, `Вывод на СБП ${phone}, к зачислению ${netPayout} ₽`, null]
+            );
+            db.run(
+                'INSERT INTO transactions (userId, type, amount, description, purchaseId) VALUES (?, ?, ?, ?, ?)',
+                [ownerId, 'credit', fee, `Комиссия вывода СБП (${req.user.id})`, null]
+            );
+            saveDatabase();
+
+            res.json({
+                message: 'Заявка обработана (демо: подключите выплаты СБП у банка/провайдера)',
+                amount,
+                fee,
+                netPayout,
+                phone,
+                sellerWithdrawableAfter: withdrawable - amount
+            });
+        } catch (e) {
+            console.error('[WALLET] withdraw', e.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });
@@ -2572,6 +2886,206 @@ if (dbMode === 'postgres') {
     });
 
     // ============================================
+    // API: Техподдержка (тикеты)
+    // ============================================
+
+    const supportCategoryValidator = body('category').trim().isIn(['payment', 'product', 'account', 'other']).withMessage('Некорректная категория');
+
+    app.post('/api/support/tickets', authenticateToken, [
+        body('subject').trim().notEmpty().isLength({ max: 200 }).withMessage('Тема обязательна'),
+        supportCategoryValidator,
+        body('message').trim().notEmpty().isLength({ max: 8000 }).withMessage('Текст обращения обязателен'),
+        validate
+    ], (req, res) => {
+        try {
+            const { subject, category, message } = req.body;
+            const now = new Date().toISOString();
+            db.run(
+                `INSERT INTO support_tickets (userId, subject, category, body, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'open', ?, ?)`,
+                [req.user.id, sanitizeHTML(subject), sanitizeHTML(category), sanitizeHTML(message), now, now]
+            );
+            saveDatabase();
+            const idRes = db.exec('SELECT last_insert_rowid()');
+            const ticketId = idRes[0].values[0][0];
+            res.status(201).json({
+                id: ticketId,
+                userId: req.user.id,
+                subject: sanitizeHTML(subject),
+                category: sanitizeHTML(category),
+                body: sanitizeHTML(message),
+                status: 'open',
+                createdAt: now,
+                updatedAt: now
+            });
+        } catch (error) {
+            console.error('Ошибка создания тикета:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.get('/api/support/my-tickets', authenticateToken, (req, res) => {
+        try {
+            const result = db.exec(
+                `SELECT id, userId, subject, category, body, status, createdAt, updatedAt FROM support_tickets WHERE userId = ? ORDER BY updatedAt DESC`,
+                [req.user.id]
+            );
+            if (!result.length || !result[0].values.length) return res.json([]);
+            res.json(result[0].values.map(row => ({
+                id: row[0],
+                userId: sanitizeHTML(row[1]),
+                subject: sanitizeHTML(row[2]),
+                category: sanitizeHTML(row[3]),
+                body: sanitizeHTML(row[4]),
+                status: sanitizeHTML(row[5]),
+                createdAt: row[6],
+                updatedAt: row[7]
+            })));
+        } catch (error) {
+            console.error('Ошибка списка тикетов:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.get('/api/support/tickets', authenticateToken, requireStaff, (req, res) => {
+        try {
+            const status = req.query.status;
+            let sql = `SELECT t.id, t.userId, t.subject, t.category, t.body, t.status, t.createdAt, t.updatedAt, u.name AS userName
+                FROM support_tickets t JOIN users u ON t.userId = u.id`;
+            const params = [];
+            if (status === 'open' || status === 'closed') {
+                sql += ' WHERE t.status = ?';
+                params.push(status);
+            }
+            sql += ' ORDER BY t.updatedAt DESC';
+            const result = db.exec(sql, params);
+            if (!result.length || !result[0].values.length) return res.json([]);
+            res.json(result[0].values.map(row => ({
+                id: row[0],
+                userId: sanitizeHTML(row[1]),
+                subject: sanitizeHTML(row[2]),
+                category: sanitizeHTML(row[3]),
+                body: sanitizeHTML(row[4]),
+                status: sanitizeHTML(row[5]),
+                createdAt: row[6],
+                updatedAt: row[7],
+                userName: sanitizeHTML(row[8] || '')
+            })));
+        } catch (error) {
+            console.error('Ошибка списка тикетов (staff):', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.get('/api/support/tickets/:id', authenticateToken, [param('id').notEmpty().isInt({ min: 1 }).withMessage('Некорректный ID'), validate], (req, res) => {
+        try {
+            const tRes = db.exec('SELECT id, userId, subject, category, body, status, createdAt, updatedAt FROM support_tickets WHERE id = ?', [req.params.id]);
+            if (!tRes.length || !tRes[0].values.length) {
+                return res.status(404).json({ error: 'Обращение не найдено' });
+            }
+            const tr = tRes[0].values[0];
+            const ownerId = tr[1];
+            const isStaff = req.user.isAdmin || req.user.isModerator;
+            if (ownerId !== req.user.id && !isStaff) {
+                return res.status(403).json({ error: 'Доступ запрещён' });
+            }
+            const ticket = {
+                id: tr[0],
+                userId: sanitizeHTML(ownerId),
+                subject: sanitizeHTML(tr[2]),
+                category: sanitizeHTML(tr[3]),
+                body: sanitizeHTML(tr[4]),
+                status: sanitizeHTML(tr[5]),
+                createdAt: tr[6],
+                updatedAt: tr[7]
+            };
+            const mRes = db.exec(
+                'SELECT id, authorId, message, isStaff, createdAt FROM support_ticket_messages WHERE ticketId = ? ORDER BY createdAt ASC',
+                [req.params.id]
+            );
+            const messages = mRes.length && mRes[0].values.length
+                ? mRes[0].values.map(row => ({
+                    id: row[0],
+                    authorId: sanitizeHTML(row[1]),
+                    message: sanitizeHTML(row[2]),
+                    isStaff: Boolean(row[3]),
+                    createdAt: row[4]
+                }))
+                : [];
+            res.json({ ticket, messages });
+        } catch (error) {
+            console.error('Ошибка тикета:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.post('/api/support/tickets/:id/messages', authenticateToken, [
+        param('id').notEmpty().isInt({ min: 1 }).withMessage('Некорректный ID'),
+        body('message').trim().notEmpty().isLength({ max: 8000 }).withMessage('Сообщение обязательно'),
+        validate
+    ], (req, res) => {
+        try {
+            const tRes = db.exec('SELECT userId, status FROM support_tickets WHERE id = ?', [req.params.id]);
+            if (!tRes.length || !tRes[0].values.length) {
+                return res.status(404).json({ error: 'Обращение не найдено' });
+            }
+            const [ownerId, ticketStatus] = tRes[0].values[0];
+            const isStaff = req.user.isAdmin || req.user.isModerator;
+            const isOwner = ownerId === req.user.id;
+            if (!isOwner && !isStaff) {
+                return res.status(403).json({ error: 'Доступ запрещён' });
+            }
+            if (ticketStatus !== 'open') {
+                return res.status(400).json({ error: 'Обращение закрыто' });
+            }
+            const msg = sanitizeHTML(req.body.message);
+            const now = new Date().toISOString();
+            const staffFlag = isStaff ? 1 : 0;
+            db.run(
+                'INSERT INTO support_ticket_messages (ticketId, authorId, message, isStaff, createdAt) VALUES (?, ?, ?, ?, ?)',
+                [req.params.id, req.user.id, msg, staffFlag, now]
+            );
+            db.run('UPDATE support_tickets SET updatedAt = ? WHERE id = ?', [now, req.params.id]);
+            saveDatabase();
+            const idRes = db.exec('SELECT last_insert_rowid()');
+            const messageId = idRes[0].values[0][0];
+            if (isStaff) {
+                createNotification(
+                    ownerId,
+                    'Ответ техподдержки',
+                    `По обращению #${req.params.id}: ${msg.slice(0, 200)}${msg.length > 200 ? '…' : ''}`,
+                    'support'
+                );
+            }
+            res.status(201).json({
+                id: messageId,
+                ticketId: parseInt(req.params.id, 10),
+                authorId: req.user.id,
+                message: msg,
+                isStaff: Boolean(staffFlag),
+                createdAt: now
+            });
+        } catch (error) {
+            console.error('Ошибка сообщения тикета:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    app.patch('/api/support/tickets/:id/close', authenticateToken, requireStaff, [
+        param('id').notEmpty().isInt({ min: 1 }).withMessage('Некорректный ID'),
+        validate
+    ], (req, res) => {
+        try {
+            const now = new Date().toISOString();
+            db.run("UPDATE support_tickets SET status = 'closed', updatedAt = ? WHERE id = ?", [now, req.params.id]);
+            saveDatabase();
+            res.json({ message: 'Обращение закрыто' });
+        } catch (error) {
+            console.error('Ошибка закрытия тикета:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // ============================================
     // API: Чат
     // ============================================
 
@@ -2592,7 +3106,8 @@ if (dbMode === 'postgres') {
 
             const [buyerId, sellerId] = purchaseResult[0].values[0];
 
-            if (req.user.id !== buyerId && req.user.id !== sellerId && !req.user.isAdmin) {
+            const isStaffChat = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffChat) {
                 console.log(`[AUTH] Попытка доступа к чужому чату: пользователь ${req.user.id}, покупка ${req.params.purchaseId}`);
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
@@ -2617,10 +3132,11 @@ if (dbMode === 'postgres') {
                 createdAt: row[9]
             })) : [];
 
-            // Автоматически отмечаем входящие сообщения как прочитанные
-            db.run("UPDATE chat_messages SET isRead = 1 WHERE purchaseId = ? AND receiverId = ? AND isRead = 0",
-                [req.params.purchaseId, req.user.id]);
-            saveDatabase();
+            if (!isStaffChat) {
+                db.run("UPDATE chat_messages SET isRead = 1 WHERE purchaseId = ? AND receiverId = ? AND isRead = 0",
+                    [req.params.purchaseId, req.user.id]);
+                saveDatabase();
+            }
 
             res.json({
                 messages,
@@ -2828,6 +3344,42 @@ if (dbMode === 'postgres') {
             })) : []);
         } catch (error) {
             console.error('Ошибка получения чатов:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // Список всех переписок (покупки с сообщениями) — администратор или модератор
+    app.get('/api/admin/chat-conversations', authenticateToken, requireStaff, (req, res) => {
+        try {
+            const result = db.exec(`
+                SELECT p.id, p.title, p.buyerId, p.sellerId,
+                    bu.name AS buyerName,
+                    su.name AS sellerName,
+                    (SELECT cm.message FROM chat_messages cm WHERE cm.purchaseId = p.id ORDER BY cm.createdAt DESC LIMIT 1) AS lastMessage,
+                    (SELECT cm.createdAt FROM chat_messages cm WHERE cm.purchaseId = p.id ORDER BY cm.createdAt DESC LIMIT 1) AS lastTime,
+                    (SELECT COUNT(*) FROM chat_messages cm WHERE cm.purchaseId = p.id) AS messageCount
+                FROM purchases p
+                LEFT JOIN users bu ON p.buyerId = bu.id
+                LEFT JOIN users su ON p.sellerId = su.id
+                WHERE p.id IN (SELECT DISTINCT purchaseId FROM chat_messages)
+                ORDER BY lastTime DESC
+            `);
+            if (!result.length || !result[0].values.length) {
+                return res.json([]);
+            }
+            res.json(result[0].values.map(row => ({
+                purchaseId: row[0],
+                title: sanitizeHTML(row[1]),
+                buyerId: sanitizeHTML(row[2]),
+                sellerId: sanitizeHTML(row[3]),
+                buyerName: sanitizeHTML(row[4] || ''),
+                sellerName: sanitizeHTML(row[5] || ''),
+                lastMessage: sanitizeHTML(row[6] || ''),
+                lastTime: row[7],
+                messageCount: row[8]
+            })));
+        } catch (error) {
+            console.error('Ошибка списка переписок (админ):', error.message);
             res.status(500).json({ error: 'Ошибка сервера' });
         }
     });

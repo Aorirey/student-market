@@ -37,7 +37,9 @@
                     <span id="notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; align-items: center; justify-content: center;">0</span>
                 </button>
                 <button class="btn-cabinet" data-action="open-cabinet" aria-label="Личный кабинет">Личный кабинет</button>
+                <button class="btn-support-header" id="btn-support-header" type="button" data-action="open-support-modal" aria-label="Техническая поддержка">Тех. Поддержка</button>
                 <button class="btn-admin" id="btn-admin" style="display: none;" data-action="open-admin" aria-label="Админ-панель">Админ</button>
+                <button class="btn-moderator" id="btn-moderator" style="display: none;" type="button" data-action="open-admin" aria-label="Панель модератора">Модерация</button>
                 <button class="btn-logout" data-action="logout" aria-label="Выйти из аккаунта">Выйти</button>
             </div>
         </div>
@@ -197,14 +199,32 @@
                     <h3>Мои покупки</h3>
                     <div class="purchases-list" id="purchases-list" aria-live="polite"></div>
                 </div>
-                <div class="cabinet-info">
-                    <h3>Баланс: <span id="user-balance">10000</span> ₽</h3>
+                <div class="cabinet-info wallet-buyer-block">
+                    <h3>Баланс для покупок: <span id="user-balance">0</span> ₽</h3>
+                    <p class="form-hint" id="wallet-topup-hint">Пополнение: на баланс зачисляется сумма без комиссии; комиссия 7% удерживается в пользу площадки (в продакшене — через эквайера, сейчас кнопка имитирует успешный платёж).</p>
+                    <div class="wallet-topup-row">
+                        <input type="number" id="wallet-topup-net" min="1" max="500000" step="1" placeholder="Сумма на баланс, ₽" aria-label="Сумма пополнения">
+                        <button type="button" class="btn-signup" data-action="wallet-topup">Пополнить</button>
+                    </div>
+                    <p class="form-hint" id="wallet-topup-preview"></p>
                     <h3>Рейтинг: <span id="user-rating">Нет отзывов</span></h3>
                 </div>
             </div>
 
             <!-- Вкладка мои продажи -->
             <div id="cabinet-sales" class="cabinet-section" role="tabpanel">
+                <div class="cabinet-info wallet-seller-block">
+                    <h3>Вывод средств (СБП)</h3>
+                    <p class="form-hint">Деньги с заказов доступны к выводу через 2 дня после того, как покупатель нажал «Подтвердить выполнение». Комиссия вывода 7% — на счёт площадки.</p>
+                    <p>Доступно к выводу: <strong id="seller-withdrawable">0</strong> ₽</p>
+                    <p>На удержании (2 дня): <strong id="seller-maturing">0</strong> ₽</p>
+                    <p>Ожидают вашего файла / подтверждения покупателя: <strong id="seller-awaiting">0</strong> ₽</p>
+                    <div class="wallet-withdraw-row">
+                        <input type="number" id="wallet-withdraw-amount" min="10" step="1" placeholder="Сумма списания с доступного, ₽" aria-label="Сумма вывода">
+                        <input type="tel" id="wallet-withdraw-phone" placeholder="Телефон СБП 79001234567" autocomplete="tel" aria-label="Телефон СБП">
+                        <button type="button" class="btn-signup" data-action="wallet-withdraw">Вывести</button>
+                    </div>
+                </div>
                 <div class="cabinet-info">
                     <h3>Мои продажи</h3>
                     <div class="sales-list" id="seller-sales-list" aria-live="polite"></div>
@@ -229,7 +249,10 @@
                     <div class="chat-window" id="chat-window" style="display: none;">
                         <div class="chat-header">
                             <button class="btn-back-chat" data-action="close-chat-window" aria-label="Закрыть чат">← Назад</button>
-                            <span id="chat-with-name"></span>
+                            <div class="chat-header-main">
+                                <span id="chat-with-name"></span>
+                                <div id="chat-purchase-actions" class="chat-purchase-actions" aria-live="polite"></div>
+                            </div>
                         </div>
                         <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
                         <div class="chat-input-area">
@@ -247,6 +270,7 @@
             <div id="cabinet-add" class="cabinet-section" role="tabpanel">
                 <div class="cabinet-info">
                     <h3>Добавить товар или индивидуальный запрос</h3>
+                    <p id="cabinet-selling-blocked-hint" class="form-hint" style="display: none;" role="status">Аккаунт ограничен: вы не можете выставлять готовые товары. Индивидуальные запросы и техподдержка доступны.</p>
                     <form class="add-product-form" id="add-product-form" novalidate>
                         <select id="product-type" data-toggle-product-type aria-label="Тип публикации" required>
                             <option value="product">Готовый товар</option>
@@ -747,6 +771,7 @@
                 <button class="btn-back" data-action="back-from-seller" aria-label="Назад к списку">← Назад</button>
                 <h2 id="seller-page-name">Продавец</h2>
                 <p id="seller-page-rating" class="seller-rating">Рейтинг: --</p>
+                <p id="seller-page-joined" class="seller-joined" hidden></p>
             </div>
             <div class="seller-page-content">
                 <div class="seller-section">
@@ -763,16 +788,18 @@
         <!-- Админ-панель -->
         <div id="admin-panel" class="tab-content" role="tabpanel">
             <div class="admin-header">
-                <h2>🛡️ Панель администратора</h2>
+                <h2 id="admin-panel-title">🛡️ Панель администратора</h2>
                 <div class="admin-tabs" role="tablist" aria-label="Разделы админ-панели">
-                    <button class="admin-tab active" data-admin-tab="moderation" role="tab" aria-selected="true">Модерация товаров</button>
-                    <button class="admin-tab" data-admin-tab="custom" role="tab" aria-selected="false">Индивид. запросы</button>
+                    <button class="admin-tab admin-tab--admin-only active" data-admin-tab="moderation" role="tab" aria-selected="true">Модерация товаров</button>
+                    <button class="admin-tab admin-tab--admin-only" data-admin-tab="custom" role="tab" aria-selected="false">Индивид. запросы</button>
                     <button class="admin-tab" data-admin-tab="users" role="tab" aria-selected="false">Пользователи</button>
+                    <button class="admin-tab" data-admin-tab="chats" role="tab" aria-selected="false">Переписки</button>
+                    <button class="admin-tab" data-admin-tab="support" role="tab" aria-selected="false">Техподдержка</button>
                 </div>
             </div>
 
             <!-- Модерация товаров -->
-            <div id="admin-moderation" class="admin-section active" role="tabpanel">
+            <div id="admin-moderation" class="admin-section admin-section--admin-only active" role="tabpanel">
                 <div class="admin-info">
                     <h3>📋 Товары на проверке</h3>
                     <div class="pending-products-list" id="pending-products-list" aria-live="polite"></div>
@@ -784,7 +811,7 @@
             </div>
 
             <!-- Модерация индивидуальных запросов -->
-            <div id="admin-custom" class="admin-section" role="tabpanel">
+            <div id="admin-custom" class="admin-section admin-section--admin-only" role="tabpanel">
                 <div class="admin-info">
                     <h3>📋 Запросы на проверке</h3>
                     <div class="pending-requests-list" id="pending-requests-list" aria-live="polite"></div>
@@ -802,8 +829,84 @@
                     <div class="users-list" id="users-list" aria-live="polite"></div>
                 </div>
             </div>
+
+            <!-- Переписки пользователей (только чтение) -->
+            <div id="admin-chats" class="admin-section" role="tabpanel">
+                <div class="admin-info">
+                    <h3>💬 Переписки по заказам</h3>
+                    <p class="form-hint" style="margin-bottom: var(--space-md);">Выберите заказ слева, чтобы прочитать сообщения. Отправка от имени администратора не выполняется.</p>
+                    <div class="admin-chats-layout">
+                        <div class="admin-chats-sidebar">
+                            <button type="button" class="btn-back admin-chats-refresh" data-action="admin-chats-refresh">Обновить список</button>
+                            <div class="admin-chats-list" id="admin-chats-conversations-list" aria-live="polite"></div>
+                        </div>
+                        <div class="admin-chats-main">
+                            <div class="admin-chats-thread-head" id="admin-chats-thread-head"></div>
+                            <div class="admin-chats-thread" id="admin-chats-messages" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Техподдержка (модератор / админ) -->
+            <div id="admin-support" class="admin-section" role="tabpanel">
+                <div class="admin-info">
+                    <h3>📩 Обращения пользователей</h3>
+                    <p class="form-hint" style="margin-bottom: var(--space-md);">Выберите обращение слева, ответьте справа. Пользователь получит уведомление.</p>
+                    <div class="admin-chats-layout">
+                        <div class="admin-chats-sidebar">
+                            <button type="button" class="btn-back" data-action="admin-support-refresh">Обновить</button>
+                            <div class="admin-chats-list" id="admin-support-tickets-list" aria-live="polite"></div>
+                        </div>
+                        <div class="admin-chats-main">
+                            <div class="admin-chats-thread-head" id="admin-support-thread-head"></div>
+                            <div class="admin-chats-thread" id="admin-support-thread-messages" aria-live="polite"></div>
+                            <div class="admin-support-reply" id="admin-support-reply-wrap" style="display: none;">
+                                <textarea id="admin-support-reply-text" class="form-input" rows="3" maxlength="8000" placeholder="Ответ пользователю…" aria-label="Текст ответа"></textarea>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                                    <button type="button" class="btn-signup" data-action="admin-support-send">Отправить</button>
+                                    <button type="button" class="btn-reject" data-action="admin-support-close">Закрыть обращение</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
+
+    <!-- Модальное окно техподдержки (пользователь) -->
+    <div class="modal" id="support-modal" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" data-action="close-support-modal" aria-label="Закрыть">&times;</button>
+            <h2 id="support-modal-title">Тех. поддержка</h2>
+            <p class="form-hint support-modal__hint">Опишите проблему — ответ придёт в уведомлениях.</p>
+            <form id="support-ticket-form" class="support-ticket-form" novalidate>
+                <div class="form-group">
+                    <label for="support-subject">Тема</label>
+                    <input type="text" id="support-subject" class="form-input" maxlength="200" required aria-required="true">
+                </div>
+                <div class="form-group">
+                    <label for="support-category">Категория</label>
+                    <select id="support-category" class="form-input" required>
+                        <option value="payment">Оплата</option>
+                        <option value="product">Товар / заказ</option>
+                        <option value="account">Аккаунт</option>
+                        <option value="other">Другое</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="support-message">Текст обращения</label>
+                    <textarea id="support-message" class="form-input" rows="5" maxlength="8000" required aria-required="true"></textarea>
+                </div>
+                <button type="submit" class="btn-signup">Отправить обращение</button>
+            </form>
+            <div class="support-modal__my-section">
+                <h3 class="support-modal__my-title">Мои обращения</h3>
+                <div id="support-my-tickets" class="support-my-tickets" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Универсальное уведомление -->
     <div class="toast-container" id="toast-container" aria-live="assertive" aria-atomic="true"></div>

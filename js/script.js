@@ -686,11 +686,17 @@ async function openSellerPage(sellerId, sellerName, event) {
 
     // БЕЗОПАСНОСТЬ: Используем textContent
     setSafeText('seller-page-name', sellerName);
+    const joinedClear = document.getElementById('seller-page-joined');
+    if (joinedClear) {
+        joinedClear.textContent = '';
+        joinedClear.hidden = true;
+    }
 
     // Загружаем товары продавца
     try {
         const productsResponse = await fetch(`${API_URL}/products`);
-        const products = await productsResponse.json();
+        const productsData = await productsResponse.json();
+        const products = Array.isArray(productsData) ? productsData : (productsData.products || []);
         const sellerProducts = products.filter(p => p.sellerId === sellerId && p.status === 'approved');
 
         const productsGrid = document.getElementById('seller-products-grid');
@@ -792,13 +798,22 @@ async function openSellerPage(sellerId, sellerName, event) {
             });
         }
 
-        // Загружаем данные продавца (рейтинг)
-        const userResponse = await fetch(`${API_URL}/users/${sellerId}`);
-        const user = await userResponse.json();
+        const userOpts = currentUser && (currentUser.token || currentUser.accessToken)
+            ? { headers: { Authorization: `Bearer ${currentUser.token || currentUser.accessToken}` } }
+            : {};
+        const userResponse = await fetch(`${API_URL}/users/${sellerId}`, userOpts);
+        const user = userResponse.ok ? await userResponse.json() : {};
 
-        // Загружаем количество продаж
-        const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`);
-        const sales = await salesResponse.json();
+        let sales = [];
+        if (currentUser && (currentUser.token || currentUser.accessToken)) {
+            const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`, {
+                headers: { Authorization: `Bearer ${currentUser.token || currentUser.accessToken}` }
+            });
+            if (salesResponse.ok) {
+                const s = await salesResponse.json();
+                sales = Array.isArray(s) ? s : [];
+            }
+        }
 
         // Вычисляем рейтинг из отзывов
         const avgRating = reviews.length > 0
@@ -806,7 +821,20 @@ async function openSellerPage(sellerId, sellerName, event) {
             : '--';
 
         const ratingEl = document.getElementById('seller-page-rating');
-        ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${sales.length}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
+        const soldCount = sales.length;
+        const soldLabel = currentUser && (currentUser.token || currentUser.accessToken) ? soldCount : '—';
+        ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${soldLabel}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
+
+        const joinedEl = document.getElementById('seller-page-joined');
+        if (joinedEl) {
+            if (user && user.createdAt && !user.error) {
+                joinedEl.textContent = `Зарегистрирован: ${formatMoscowDate(user.createdAt)}`;
+                joinedEl.hidden = false;
+            } else {
+                joinedEl.textContent = '';
+                joinedEl.hidden = true;
+            }
+        }
 
     } catch (error) {
         console.error('Ошибка загрузки страницы продавца:', error);
@@ -862,14 +890,29 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         }
     } else {
         // Создание готового товара
-        const title = document.getElementById('product-title').value;
+        const title = document.getElementById('product-title').value.trim();
+        const university = (document.getElementById('product-university').value || '').trim();
+        const teacher = document.getElementById('product-teacher').value.trim();
         const category = document.getElementById('product-category').value;
-        const discipline = document.getElementById('product-discipline').value;
-        const price = parseInt(document.getElementById('product-price').value);
-        const deadlineDays = parseInt(document.getElementById('product-deadline').value);
+        const discipline = (document.getElementById('product-discipline').value || '').trim();
+        const priceRaw = document.getElementById('product-price').value;
+        const price = parseInt(priceRaw, 10);
+        const deadlineEl = document.getElementById('product-deadline');
+        const deadlineDays = deadlineEl ? parseInt(deadlineEl.value, 10) : NaN;
 
-        if (!title || !category || !discipline || !price) {
-            showToast('Ошибка', 'Заполните все поля!', 'error');
+        const missing = [];
+        if (!title) missing.push('название работы');
+        if (!university) missing.push('университет');
+        if (!teacher) missing.push('ФИО преподавателя');
+        if (!category) missing.push('категорию');
+        if (!discipline) missing.push('дисциплину');
+        if (!priceRaw.trim() || Number.isNaN(price) || price < 1) missing.push('цену (от 1 ₽)');
+        if (!deadlineEl || !deadlineEl.value || Number.isNaN(deadlineDays) || deadlineDays < 1) {
+            missing.push('срок сдачи');
+        }
+
+        if (missing.length) {
+            showToast('Ошибка', `Заполните все поля: ${missing.join(', ')}.`, 'error');
             return;
         }
 
@@ -878,12 +921,18 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         deadlineDate.setDate(deadlineDate.getDate() + deadlineDays);
         const deadline = deadlineDate.toISOString();
 
+        const authHeaders = { 'Content-Type': 'application/json' };
+        const t = currentUser && (currentUser.token || currentUser.accessToken);
+        if (t) authHeaders.Authorization = `Bearer ${t}`;
+
         try {
             const response = await fetch(`${API_URL}/products`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders,
                 body: JSON.stringify({
                     title,
+                    university,
+                    teacher,
                     category,
                     discipline,
                     price,

@@ -9,6 +9,9 @@ const { v4: uuidv4 } = require('uuid');
 const { body, param, query, validationResult } = require('express-validator');
 const crypto = require('crypto');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
+const { optionalAuthenticateToken, authenticateToken, requireAdmin, requireStaff } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -207,6 +210,7 @@ async function initDatabase() {
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT UNIQUE`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vk_id BIGINT UNIQUE`);
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT false`);
 
         // Миграции для products
         await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
@@ -306,6 +310,25 @@ async function initDatabase() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
+        await pool.query(`CREATE TABLE IF NOT EXISTS support_tickets (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            category TEXT NOT NULL,
+            body TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS support_ticket_messages (
+            id SERIAL PRIMARY KEY,
+            ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+            author_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            is_staff BOOLEAN DEFAULT false,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         const adminExists = await pool.query("SELECT * FROM users WHERE email = $1", ['admin@studentmarket.ru']);
         const hashedPassword = await bcrypt.hash('admin123', 10);
         if (adminExists.rows.length === 0) {
@@ -354,12 +377,14 @@ const userIdValidator = [
 
 const productCreateValidator = [
     body('title').trim().notEmpty().isLength({ max: 200 }),
+    body('university').trim().notEmpty().withMessage('Университет обязателен').isLength({ max: 400 }),
+    body('teacher').trim().notEmpty().withMessage('ФИО преподавателя обязательно').isLength({ max: 200 }),
     body('category').trim().notEmpty().isIn(['practices', 'labs', 'courses']),
     body('discipline').trim().notEmpty().isLength({ max: 100 }),
     body('price').notEmpty().isInt({ min: 1, max: 1000000 }),
     body('sellerId').trim().notEmpty(),
     body('sellerName').trim().notEmpty(),
-    body('deadline').optional().isISO8601(),
+    body('deadline').notEmpty().withMessage('Срок сдачи обязателен').isISO8601(),
     validate
 ];
 
@@ -402,37 +427,56 @@ const fileValidator = [
 // API: Пользователи
 // ============================================
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', authenticateToken, requireStaff, async (req, res) => {
     try {
-        const result = await pool.query("SELECT id, name, email, balance, is_admin, is_blocked, created_at FROM users");
-        res.json(result.rows.map(row => ({ 
-            id: sanitizeHTML(row.id), 
-            name: sanitizeHTML(row.name), 
-            email: sanitizeHTML(row.email), 
-            balance: row.balance, 
-            isAdmin: row.is_admin, 
-            isBlocked: row.is_blocked, 
-            createdAt: row.created_at 
+        const result = await pool.query("SELECT id, name, email, balance, is_admin, is_moderator, is_blocked, created_at FROM users");
+        res.json(result.rows.map(row => ({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked,
+            createdAt: row.created_at
         })));
-    } catch (error) { 
+    } catch (error) {
         console.error('Ошибка получения пользователей:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-app.get('/api/users/:id', userIdValidator, async (req, res) => {
+app.get('/api/users/:id', optionalAuthenticateToken, userIdValidator, async (req, res) => {
     try {
-        const result = await pool.query("SELECT id, name, email, balance, is_admin, is_blocked, created_at FROM users WHERE id = $1", [req.params.id]);
+        const result = await pool.query(
+            'SELECT id, name, email, balance, is_admin, is_moderator, is_blocked, created_at, photo_url FROM users WHERE id = $1',
+            [req.params.id]
+        );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
         const row = result.rows[0];
-        res.json({ 
-            id: sanitizeHTML(row.id), 
-            name: sanitizeHTML(row.name), 
-            email: sanitizeHTML(row.email), 
-            balance: row.balance, 
-            isAdmin: row.is_admin, 
-            isBlocked: row.is_blocked, 
-            createdAt: row.created_at 
+        const isSelf = req.user && req.user.id === req.params.id;
+        const isAdmin = req.user && req.user.isAdmin;
+        const photoUrl = row.photo_url ? sanitizeHTML(row.photo_url) : null;
+
+        if (isSelf || isAdmin) {
+            return res.json({
+                id: sanitizeHTML(row.id),
+                name: sanitizeHTML(row.name),
+                email: sanitizeHTML(row.email),
+                balance: row.balance,
+                isAdmin: row.is_admin,
+                isModerator: row.is_moderator,
+                isBlocked: row.is_blocked,
+                createdAt: row.created_at,
+                photoUrl
+            });
+        }
+
+        return res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            createdAt: row.created_at,
+            photoUrl
         });
     } catch (error) { 
         console.error('Ошибка получения пользователя:', error.message);
@@ -479,7 +523,10 @@ app.post('/api/users/login', loginValidator, async (req, res) => {
         const { email, password } = req.body;
         console.log(`[LOGIN] Попытка входа: email=${email}, passwordLen=${password ? password.length : 0}`);
         
-        const result = await pool.query("SELECT id, name, email, password, balance, is_admin, is_blocked FROM users WHERE email = $1", [email.toLowerCase()]);
+        const result = await pool.query(
+            "SELECT id, name, email, password, balance, is_admin, is_blocked, is_moderator, login FROM users WHERE email = $1",
+            [email.toLowerCase()]
+        );
         
         if (result.rows.length === 0) {
             console.log(`[LOGIN] Пользователь не найден: ${email}`);
@@ -495,11 +542,6 @@ app.post('/api/users/login', loginValidator, async (req, res) => {
             return res.status(401).json({ error: 'Неверный email или пароль' });
         }
         
-        if (row.is_blocked) {
-            console.log(`[LOGIN] Заблокирован: ${email}`);
-            return res.status(403).json({ error: 'Аккаунт заблокирован' });
-        }
-        
         console.log(`[LOGIN] Успешный вход: ${email}`);
         res.json({
             id: sanitizeHTML(row.id),
@@ -507,7 +549,9 @@ app.post('/api/users/login', loginValidator, async (req, res) => {
             email: sanitizeHTML(row.email),
             balance: row.balance,
             isAdmin: row.is_admin,
-            isBlocked: row.is_blocked
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked,
+            login: row.login || ''
         });
     } catch (error) {
         console.error('[LOGIN] Ошибка:', error.message);
@@ -515,39 +559,95 @@ app.post('/api/users/login', loginValidator, async (req, res) => {
     }
 });
 
-app.patch('/api/users/:id/balance', userIdValidator, async (req, res) => {
+app.patch('/api/users/:id/balance', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
     try {
         const { balance } = req.body;
         if (typeof balance !== 'number' || balance < 0 || balance > 10000000) {
             return res.status(400).json({ error: 'Некорректный баланс' });
         }
         await pool.query("UPDATE users SET balance = $1 WHERE id = $2", [balance, req.params.id]);
-        const result = await pool.query("SELECT id, name, email, balance, is_admin, is_blocked FROM users WHERE id = $1", [req.params.id]);
+        const result = await pool.query(
+            "SELECT id, name, email, balance, is_admin, is_moderator, is_blocked FROM users WHERE id = $1",
+            [req.params.id]
+        );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
         const row = result.rows[0];
-        res.json({ id: sanitizeHTML(row.id), name: sanitizeHTML(row.name), email: sanitizeHTML(row.email), balance: row.balance, isAdmin: row.is_admin, isBlocked: row.is_blocked });
-    } catch (error) { 
+        res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked
+        });
+    } catch (error) {
         console.error('Ошибка баланса:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-app.patch('/api/users/:id/block', userIdValidator, async (req, res) => {
+app.patch('/api/users/:id/block', authenticateToken, requireStaff, userIdValidator, async (req, res) => {
     try {
         const { isBlocked } = req.body;
         if (typeof isBlocked !== 'boolean') return res.status(400).json({ error: 'Некорректное значение' });
-        await pool.query("UPDATE users SET is_blocked = $1 WHERE id = $2", [isBlocked, req.params.id]);
-        const result = await pool.query("SELECT id, name, email, balance, is_admin, is_blocked FROM users WHERE id = $1", [req.params.id]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+        const target = await pool.query('SELECT is_admin, is_moderator FROM users WHERE id = $1', [req.params.id]);
+        if (target.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+        const t = target.rows[0];
+        if (t.is_admin) return res.status(403).json({ error: 'Нельзя блокировать администратора' });
+        if (t.is_moderator && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Блокировать модератора может только администратор' });
+        }
+        await pool.query('UPDATE users SET is_blocked = $1 WHERE id = $2', [isBlocked, req.params.id]);
+        const result = await pool.query(
+            'SELECT id, name, email, balance, is_admin, is_moderator, is_blocked FROM users WHERE id = $1',
+            [req.params.id]
+        );
         const row = result.rows[0];
-        res.json({ id: sanitizeHTML(row.id), name: sanitizeHTML(row.name), email: sanitizeHTML(row.email), balance: row.balance, isAdmin: row.is_admin, isBlocked: row.is_blocked });
-    } catch (error) { 
+        res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked
+        });
+    } catch (error) {
         console.error('Ошибка блокировки:', error.message);
-        res.status(500).json({ error: 'Ошибка сервера' }); 
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-app.delete('/api/users/:id', userIdValidator, async (req, res) => {
+app.patch('/api/users/:id/moderator', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
+    try {
+        const { isModerator } = req.body;
+        if (typeof isModerator !== 'boolean') return res.status(400).json({ error: 'Некорректное значение isModerator' });
+        const target = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.params.id]);
+        if (target.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+        if (target.rows[0].is_admin) return res.status(400).json({ error: 'Роль администратора задаётся отдельно' });
+        await pool.query('UPDATE users SET is_moderator = $1 WHERE id = $2', [isModerator, req.params.id]);
+        const result = await pool.query(
+            'SELECT id, name, email, balance, is_admin, is_moderator, is_blocked FROM users WHERE id = $1',
+            [req.params.id]
+        );
+        const row = result.rows[0];
+        res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked
+        });
+    } catch (error) {
+        console.error('Ошибка назначения модератора:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.delete('/api/users/:id', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
     try {
         const userResult = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.params.id]);
         if (userResult.rows.length > 0 && userResult.rows[0].is_admin) return res.status(403).json({ error: 'Нельзя удалить админа' });
@@ -666,20 +766,29 @@ app.post('/api/auth/vk', async (req, res) => {
 
         const user = result.rows[0];
 
-        if (user.is_blocked) {
-            return res.status(403).json({ error: 'Аккаунт заблокирован' });
-        }
-
         console.log(`[VK] Успешный вход: ${fullName}`);
+        const vkPayload = {
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            isAdmin: Boolean(user.is_admin),
+            isModerator: Boolean(user.is_moderator),
+            login: user.login || ''
+        };
+        const token = jwt.sign(vkPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        const refreshToken = jwt.sign(vkPayload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN });
         res.json({
             id: user.id,
             name: sanitizeHTML(user.name),
             email: user.email,
             balance: user.balance,
             isAdmin: user.is_admin,
+            isModerator: Boolean(user.is_moderator),
             isBlocked: user.is_blocked,
             photoUrl: user.photo_url,
-            login: user.login
+            login: user.login,
+            token,
+            refreshToken
         });
     } catch (error) {
         console.error('[VK] Ошибка:', error.message);
@@ -731,6 +840,16 @@ app.post('/api/auth/register', [
         );
 
         console.log(`[AUTH] Регистрация успешна: ${login}`);
+        const tokenPayload = {
+            id: newId,
+            name: sanitizeHTML(name),
+            email: `${login}@studentmarket.local`,
+            isAdmin: false,
+            isModerator: false,
+            login: login.toLowerCase()
+        };
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        const refreshToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN });
         res.status(201).json({
             id: newId,
             name: sanitizeHTML(name),
@@ -738,8 +857,11 @@ app.post('/api/auth/register', [
             email: `${login}@studentmarket.local`,
             balance: 10000,
             isAdmin: false,
+            isModerator: false,
             isBlocked: false,
-            photoUrl: null
+            photoUrl: null,
+            token,
+            refreshToken
         });
     } catch (error) {
         console.error('[AUTH] Ошибка регистрации:', error.message);
@@ -780,13 +902,17 @@ app.post('/api/auth/login', [
             return res.status(401).json({ error: 'Неверный логин или пароль' });
         }
 
-        // Проверяем блокировку
-        if (user.is_blocked) {
-            console.log(`[AUTH] Заблокирован: ${login}`);
-            return res.status(403).json({ error: 'Аккаунт заблокирован' });
-        }
-
         console.log(`[AUTH] Вход успешен: ${login}`);
+        const tokenPayload = {
+            id: user.id,
+            name: sanitizeHTML(user.name),
+            email: user.email,
+            isAdmin: Boolean(user.is_admin),
+            isModerator: Boolean(user.is_moderator),
+            login: user.login || ''
+        };
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        const refreshToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN });
         res.json({
             id: user.id,
             name: sanitizeHTML(user.name),
@@ -794,13 +920,71 @@ app.post('/api/auth/login', [
             email: user.email,
             balance: user.balance,
             isAdmin: user.is_admin,
+            isModerator: Boolean(user.is_moderator),
             isBlocked: user.is_blocked,
             telegramId: user.telegram_id,
-            photoUrl: user.photo_url
+            photoUrl: user.photo_url,
+            token,
+            refreshToken
         });
     } catch (error) {
         console.error('[AUTH] Ошибка входа:', error.message);
         res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, name, email, balance, is_admin, is_moderator, is_blocked, login, photo_url FROM users WHERE id = $1`,
+            [req.user.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+        const row = result.rows[0];
+        res.json({
+            id: sanitizeHTML(row.id),
+            name: sanitizeHTML(row.name),
+            email: sanitizeHTML(row.email),
+            balance: row.balance,
+            isAdmin: row.is_admin,
+            isModerator: row.is_moderator,
+            isBlocked: row.is_blocked,
+            login: row.login || '',
+            photo_url: row.photo_url ? sanitizeHTML(row.photo_url) : null
+        });
+    } catch (error) {
+        console.error('[AUTH] /me:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.post('/api/auth/refresh', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken) return res.status(401).json({ error: 'Требуется refresh токен' });
+        const decoded = jwt.verify(refreshToken, JWT_SECRET);
+        const result = await pool.query(
+            `SELECT id, name, email, balance, is_admin, is_blocked, is_moderator, login FROM users WHERE id = $1`,
+            [decoded.id]
+        );
+        if (result.rows.length === 0) return res.status(401).json({ error: 'Пользователь не найден' });
+        const row = result.rows[0];
+        const tokenPayload = {
+            id: row.id,
+            name: sanitizeHTML(row.name),
+            email: row.email,
+            isAdmin: Boolean(row.is_admin),
+            isModerator: Boolean(row.is_moderator),
+            login: row.login || ''
+        };
+        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        const newRefreshToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN });
+        res.json({ token, refreshToken: newRefreshToken });
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ error: 'Refresh токен истёк, войдите заново' });
+        }
+        return res.status(403).json({ error: 'Неверный refresh токен' });
     }
 });
 
@@ -840,8 +1024,11 @@ app.get('/api/products/all', async (req, res) => {
     }
 });
 
-app.get('/api/users/:id/products', userIdValidator, async (req, res) => {
+app.get('/api/users/:id/products', authenticateToken, userIdValidator, async (req, res) => {
     try {
+        if (req.user.id !== req.params.id && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои товары' });
+        }
         const result = await pool.query("SELECT * FROM products WHERE seller_id = $1", [req.params.id]);
         res.json(result.rows.map(row => ({
             id: row.id, title: sanitizeHTML(row.title), university: sanitizeHTML(row.university || ''),
@@ -856,9 +1043,16 @@ app.get('/api/users/:id/products', userIdValidator, async (req, res) => {
     }
 });
 
-app.post('/api/products', productCreateValidator, async (req, res) => {
+app.post('/api/products', authenticateToken, productCreateValidator, async (req, res) => {
     try {
         const { title, university, teacher, category, discipline, price, sellerId, sellerName, deadline } = req.body;
+        if (req.user.id !== sellerId && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать товары только от своего имени' });
+        }
+        const blockRow = await pool.query('SELECT is_blocked FROM users WHERE id = $1', [sellerId]);
+        if (blockRow.rows.length && blockRow.rows[0].is_blocked) {
+            return res.status(403).json({ error: 'Аккаунт ограничен: вы не можете выставлять товары. Обратитесь в техподдержку.' });
+        }
         const result = await pool.query(
             `INSERT INTO products (title, university, teacher, category, discipline, price, seller_id, seller_name, deadline, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
@@ -884,7 +1078,7 @@ app.post('/api/products', productCreateValidator, async (req, res) => {
     }
 });
 
-app.patch('/api/products/:id/approve', [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/products/:id/approve', authenticateToken, requireAdmin, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE products SET status = 'approved' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Одобрен товар: ${req.params.id}`);
@@ -895,7 +1089,7 @@ app.patch('/api/products/:id/approve', [param('id').notEmpty().isInt(), validate
     }
 });
 
-app.patch('/api/products/:id/reject', [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/products/:id/reject', authenticateToken, requireAdmin, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE products SET status = 'rejected' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Отклонён товар: ${req.params.id}`);
@@ -906,8 +1100,16 @@ app.patch('/api/products/:id/reject', [param('id').notEmpty().isInt(), validate]
     }
 });
 
-app.delete('/api/products/:id', [param('id').notEmpty().isInt(), validate], async (req, res) => {
-    try { 
+app.delete('/api/products/:id', authenticateToken, [param('id').notEmpty().isInt(), validate], async (req, res) => {
+    try {
+        const productResult = await pool.query('SELECT seller_id FROM products WHERE id = $1', [req.params.id]);
+        if (productResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Товар не найден' });
+        }
+        const sellerId = productResult.rows[0].seller_id;
+        if (req.user.id !== sellerId && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого товара' });
+        }
         await pool.query("DELETE FROM products WHERE id = $1", [req.params.id]); 
         console.log(`[PRODUCT] Удалён товар: ${req.params.id}`);
         res.json({ message: 'Товар удалён' }); 
@@ -1173,11 +1375,200 @@ app.delete('/api/custom-requests/:id', [param('id').notEmpty().isInt(), validate
 });
 
 // ============================================
+// API: Техподдержка
+// ============================================
+
+const supportCategoryValidatorPg = body('category').trim().isIn(['payment', 'product', 'account', 'other']).withMessage('Некорректная категория');
+
+app.post('/api/support/tickets', authenticateToken, [
+    body('subject').trim().notEmpty().isLength({ max: 200 }),
+    supportCategoryValidatorPg,
+    body('message').trim().notEmpty().isLength({ max: 8000 }),
+    validate
+], async (req, res) => {
+    try {
+        const { subject, category, message } = req.body;
+        const result = await pool.query(
+            `INSERT INTO support_tickets (user_id, subject, category, body, status)
+             VALUES ($1, $2, $3, $4, 'open') RETURNING id, created_at, updated_at`,
+            [req.user.id, sanitizeHTML(subject), sanitizeHTML(category), sanitizeHTML(message)]
+        );
+        const r = result.rows[0];
+        res.status(201).json({
+            id: r.id,
+            userId: req.user.id,
+            subject: sanitizeHTML(subject),
+            category: sanitizeHTML(category),
+            body: sanitizeHTML(message),
+            status: 'open',
+            createdAt: r.created_at,
+            updatedAt: r.updated_at
+        });
+    } catch (error) {
+        console.error('Ошибка создания тикета:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/support/my-tickets', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, user_id, subject, category, body, status, created_at, updated_at FROM support_tickets
+             WHERE user_id = $1 ORDER BY updated_at DESC`,
+            [req.user.id]
+        );
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            userId: sanitizeHTML(row.user_id),
+            subject: sanitizeHTML(row.subject),
+            category: sanitizeHTML(row.category),
+            body: sanitizeHTML(row.body),
+            status: sanitizeHTML(row.status),
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        })));
+    } catch (error) {
+        console.error('Ошибка списка тикетов:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/support/tickets', authenticateToken, requireStaff, async (req, res) => {
+    try {
+        const status = req.query.status;
+        let sql = `SELECT t.id, t.user_id, t.subject, t.category, t.body, t.status, t.created_at, t.updated_at, u.name AS user_name
+            FROM support_tickets t JOIN users u ON t.user_id = u.id`;
+        const params = [];
+        if (status === 'open' || status === 'closed') {
+            sql += ' WHERE t.status = $1';
+            params.push(status);
+        }
+        sql += ' ORDER BY t.updated_at DESC';
+        const result = await pool.query(sql, params);
+        res.json(result.rows.map(row => ({
+            id: row.id,
+            userId: sanitizeHTML(row.user_id),
+            subject: sanitizeHTML(row.subject),
+            category: sanitizeHTML(row.category),
+            body: sanitizeHTML(row.body),
+            status: sanitizeHTML(row.status),
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            userName: sanitizeHTML(row.user_name || '')
+        })));
+    } catch (error) {
+        console.error('Ошибка списка тикетов (staff):', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/support/tickets/:id', authenticateToken, [param('id').notEmpty().isInt({ min: 1 }), validate], async (req, res) => {
+    try {
+        const tRes = await pool.query(
+            'SELECT id, user_id, subject, category, body, status, created_at, updated_at FROM support_tickets WHERE id = $1',
+            [req.params.id]
+        );
+        if (tRes.rows.length === 0) return res.status(404).json({ error: 'Обращение не найдено' });
+        const tr = tRes.rows[0];
+        const isStaff = req.user.isAdmin || req.user.isModerator;
+        if (tr.user_id !== req.user.id && !isStaff) return res.status(403).json({ error: 'Доступ запрещён' });
+        const mRes = await pool.query(
+            'SELECT id, author_id, message, is_staff, created_at FROM support_ticket_messages WHERE ticket_id = $1 ORDER BY created_at ASC',
+            [req.params.id]
+        );
+        res.json({
+            ticket: {
+                id: tr.id,
+                userId: sanitizeHTML(tr.user_id),
+                subject: sanitizeHTML(tr.subject),
+                category: sanitizeHTML(tr.category),
+                body: sanitizeHTML(tr.body),
+                status: sanitizeHTML(tr.status),
+                createdAt: tr.created_at,
+                updatedAt: tr.updated_at
+            },
+            messages: mRes.rows.map(row => ({
+                id: row.id,
+                authorId: sanitizeHTML(row.author_id),
+                message: sanitizeHTML(row.message),
+                isStaff: row.is_staff,
+                createdAt: row.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Ошибка тикета:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.post('/api/support/tickets/:id/messages', authenticateToken, [
+    param('id').notEmpty().isInt({ min: 1 }),
+    body('message').trim().notEmpty().isLength({ max: 8000 }),
+    validate
+], async (req, res) => {
+    try {
+        const tRes = await pool.query('SELECT user_id, status FROM support_tickets WHERE id = $1', [req.params.id]);
+        if (tRes.rows.length === 0) return res.status(404).json({ error: 'Обращение не найдено' });
+        const { user_id: ownerId, status: ticketStatus } = tRes.rows[0];
+        const isStaff = req.user.isAdmin || req.user.isModerator;
+        if (ownerId !== req.user.id && !isStaff) return res.status(403).json({ error: 'Доступ запрещён' });
+        if (ticketStatus !== 'open') return res.status(400).json({ error: 'Обращение закрыто' });
+        const msg = sanitizeHTML(req.body.message);
+        const ins = await pool.query(
+            `INSERT INTO support_ticket_messages (ticket_id, author_id, message, is_staff) VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+            [req.params.id, req.user.id, msg, isStaff]
+        );
+        await pool.query('UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [req.params.id]);
+        const r = ins.rows[0];
+        if (isStaff) {
+            await createNotification(
+                ownerId,
+                'Ответ техподдержки',
+                `По обращению #${req.params.id}: ${msg.slice(0, 200)}${msg.length > 200 ? '…' : ''}`,
+                'support',
+                pool
+            );
+        }
+        res.status(201).json({
+            id: r.id,
+            ticketId: parseInt(req.params.id, 10),
+            authorId: req.user.id,
+            message: msg,
+            isStaff,
+            createdAt: r.created_at
+        });
+    } catch (error) {
+        console.error('Ошибка сообщения тикета:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.patch('/api/support/tickets/:id/close', authenticateToken, requireStaff, [param('id').notEmpty().isInt({ min: 1 }), validate], async (req, res) => {
+    try {
+        await pool.query("UPDATE support_tickets SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [req.params.id]);
+        res.json({ message: 'Обращение закрыто' });
+    } catch (error) {
+        console.error('Ошибка закрытия тикета:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ============================================
 // API: Чат
 // ============================================
 
-app.get('/api/chat/:purchaseId', [param('purchaseId').notEmpty(), validate], async (req, res) => {
+app.get('/api/chat/:purchaseId', authenticateToken, [param('purchaseId').notEmpty(), validate], async (req, res) => {
     try {
+        const p = await pool.query('SELECT buyer_id, seller_id FROM purchases WHERE id = $1', [req.params.purchaseId]);
+        if (p.rows.length === 0) {
+            return res.status(404).json({ error: 'Покупка не найдена' });
+        }
+        const { buyer_id: buyerId, seller_id: sellerId } = p.rows[0];
+        const isStaffChat = req.user.isAdmin || req.user.isModerator;
+        if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffChat) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
+        }
+
         const result = await pool.query("SELECT * FROM chat_messages WHERE purchase_id = $1 ORDER BY created_at ASC", [req.params.purchaseId]);
         res.json(result.rows.map(row => ({ 
             id: row.id, purchaseId: row.purchase_id, senderId: sanitizeHTML(row.sender_id), 
@@ -1191,7 +1582,7 @@ app.get('/api/chat/:purchaseId', [param('purchaseId').notEmpty(), validate], asy
     }
 });
 
-app.post('/api/chat', [
+app.post('/api/chat', authenticateToken, [
     body('purchaseId').notEmpty(),
     body('senderId').trim().notEmpty(),
     body('receiverId').trim().notEmpty(),
@@ -1201,6 +1592,20 @@ app.post('/api/chat', [
 ], async (req, res) => {
     try {
         const { purchaseId, senderId, receiverId, message, fileName, fileData, fileType } = req.body;
+        if (req.user.id !== senderId) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете отправлять сообщения только от своего имени' });
+        }
+        const purchaseResult = await pool.query(
+            'SELECT buyer_id, seller_id FROM purchases WHERE id = $1',
+            [purchaseId]
+        );
+        if (purchaseResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Покупка не найдена' });
+        }
+        const { buyer_id: buyerId, seller_id: sellerId } = purchaseResult.rows[0];
+        if (req.user.id !== buyerId && req.user.id !== sellerId) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
+        }
         const result = await pool.query(
             `INSERT INTO chat_messages (purchase_id, sender_id, receiver_id, message, file_name, file_data, file_type) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, 
@@ -1213,8 +1618,11 @@ app.post('/api/chat', [
     }
 });
 
-app.get('/api/chat/purchases/:userId', userIdValidator, async (req, res) => {
+app.get('/api/chat/purchases/:userId', authenticateToken, userIdValidator, async (req, res) => {
     try {
+        if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои чаты' });
+        }
         const result = await pool.query(
             `SELECT DISTINCT p.id, p.title, u.name as counterpartName, p.seller_id as sellerId, p.buyer_id as buyerId 
              FROM purchases p 
@@ -1230,6 +1638,38 @@ app.get('/api/chat/purchases/:userId', userIdValidator, async (req, res) => {
     } catch (error) { 
         console.error('Ошибка чатов:', error.message);
         res.status(500).json({ error: 'Ошибка сервера' }); 
+    }
+});
+
+app.get('/api/admin/chat-conversations', authenticateToken, requireStaff, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT p.id, p.title, p.buyer_id, p.seller_id,
+                bu.name AS buyer_name,
+                su.name AS seller_name,
+                (SELECT cm.message FROM chat_messages cm WHERE cm.purchase_id = p.id ORDER BY cm.created_at DESC LIMIT 1) AS last_message,
+                (SELECT cm.created_at FROM chat_messages cm WHERE cm.purchase_id = p.id ORDER BY cm.created_at DESC LIMIT 1) AS last_time,
+                (SELECT COUNT(*)::int FROM chat_messages cm WHERE cm.purchase_id = p.id) AS message_count
+            FROM purchases p
+            LEFT JOIN users bu ON p.buyer_id = bu.id
+            LEFT JOIN users su ON p.seller_id = su.id
+            WHERE EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.purchase_id = p.id)
+            ORDER BY last_time DESC NULLS LAST
+        `);
+        res.json(result.rows.map(row => ({
+            purchaseId: row.id,
+            title: sanitizeHTML(row.title),
+            buyerId: sanitizeHTML(row.buyer_id),
+            sellerId: sanitizeHTML(row.seller_id),
+            buyerName: sanitizeHTML(row.buyer_name || ''),
+            sellerName: sanitizeHTML(row.seller_name || ''),
+            lastMessage: sanitizeHTML(row.last_message || ''),
+            lastTime: row.last_time,
+            messageCount: row.message_count
+        })));
+    } catch (error) {
+        console.error('Ошибка списка переписок (админ):', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 

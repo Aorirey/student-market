@@ -16,6 +16,8 @@ function authenticateToken(req, res, next) {
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
+        user.isAdmin = Boolean(user.isAdmin);
+        user.isModerator = Boolean(user.isModerator);
         req.user = user;
         next();
     } catch (error) {
@@ -26,6 +28,25 @@ function authenticateToken(req, res, next) {
     }
 }
 
+/** Токен не обязателен: при отсутствии или невалидном токене req.user = null */
+function optionalAuthenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    req.user = null;
+    if (!token) {
+        return next();
+    }
+    try {
+        const user = jwt.verify(token, JWT_SECRET);
+        user.isAdmin = Boolean(user.isAdmin);
+        user.isModerator = Boolean(user.isModerator);
+        req.user = user;
+    } catch {
+        req.user = null;
+    }
+    next();
+}
+
 /**
  * Middleware для проверки прав администратора
  * Должен использоваться ПОСЛЕ authenticateToken
@@ -34,6 +55,14 @@ function requireAdmin(req, res, next) {
     if (!req.user || !req.user.isAdmin) {
         console.log(`[AUTH] Попытка доступа к админ-функции: ${req.user?.id || 'unknown'}`);
         return res.status(403).json({ error: 'Доступ запрещён: требуются права администратора' });
+    }
+    next();
+}
+
+/** Администратор или модератор (переписки, техподдержка, блокировка обычных пользователей) */
+function requireStaff(req, res, next) {
+    if (!req.user || (!req.user.isAdmin && !req.user.isModerator)) {
+        return res.status(403).json({ error: 'Доступ запрещён: требуются права модератора или администратора' });
     }
     next();
 }
@@ -98,7 +127,9 @@ function requirePurchaseParticipant(db) {
 
 module.exports = {
     authenticateToken,
+    optionalAuthenticateToken,
     requireAdmin,
+    requireStaff,
     requireOwnership,
     requirePurchaseParticipant
 };

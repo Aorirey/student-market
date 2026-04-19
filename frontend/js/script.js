@@ -11,6 +11,10 @@ const API_URL = __devSplit
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
 
+function isStaffUser(u = currentUser) {
+    return Boolean(u && (u.isAdmin || u.isModerator));
+}
+
 function authToken() {
     if (!currentUser) return '';
     return currentUser.token || currentUser.accessToken || '';
@@ -828,6 +832,7 @@ function initProductDisciplineCombobox(nativeSelect) {
     nativeSelect._filterComboboxSync = syncInputFromSelect;
     nativeSelect._filterComboboxOpen = openMenu;
     nativeSelect._filterComboboxClose = closeMenu;
+    nativeSelect._commitProductDisciplineInput = (force) => commitDisciplineInput(force);
 
     syncInputFromSelect();
 }
@@ -858,12 +863,18 @@ async function checkAuth() {
         userMenu.style.display = 'flex';
         if (userName) userName.textContent = currentUser.name;
         const balanceEl = document.getElementById('user-balance');
-        if (balanceEl) balanceEl.textContent = currentUser.balance || 10000;
+        if (balanceEl) balanceEl.textContent = currentUser.balance != null ? currentUser.balance : 0;
 
+        const btnMod = document.getElementById('btn-moderator');
         if (currentUser.isAdmin) {
             btnAdmin.style.display = 'block';
+            if (btnMod) btnMod.style.display = 'none';
+        } else if (currentUser.isModerator) {
+            btnAdmin.style.display = 'none';
+            if (btnMod) btnMod.style.display = 'block';
         } else {
             btnAdmin.style.display = 'none';
+            if (btnMod) btnMod.style.display = 'none';
         }
 
         // Показываем аватар если есть
@@ -875,6 +886,24 @@ async function checkAuth() {
 
         // Загружаем уведомления
         loadNotifications();
+
+        const blockedHint = document.getElementById('cabinet-selling-blocked-hint');
+        const submitProdBtn = document.getElementById('btn-submit-product');
+        const productTypeSel = document.getElementById('product-type');
+        if (currentUser.isBlocked) {
+            if (blockedHint) blockedHint.style.display = 'block';
+            if (submitProdBtn && productTypeSel && !productTypeSel.dataset.blockSyncAttached) {
+                productTypeSel.dataset.blockSyncAttached = '1';
+                const syncSubmitState = () => {
+                    submitProdBtn.disabled = productTypeSel.value === 'product';
+                };
+                productTypeSel.addEventListener('change', syncSubmitState);
+                syncSubmitState();
+            }
+        } else {
+            if (blockedHint) blockedHint.style.display = 'none';
+            if (submitProdBtn) submitProdBtn.disabled = false;
+        }
 
         // Автообновление уведомлений каждые 30 секунд
         if (notificationInterval) clearInterval(notificationInterval);
@@ -1220,8 +1249,43 @@ function openAdminPanel() {
         btn.classList.remove('active');
     });
 
-    document.getElementById('admin-panel').classList.add('active');
+    document.querySelectorAll('.admin-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    const adminPanel = document.getElementById('admin-panel');
+    const titleEl = document.getElementById('admin-panel-title');
+    const isOnlyMod = currentUser && currentUser.isModerator && !currentUser.isAdmin;
+    adminPanel.classList.toggle('admin-panel--moderator', Boolean(isOnlyMod));
+    if (titleEl) {
+        titleEl.textContent = isOnlyMod ? '🛡️ Панель модератора' : '🛡️ Панель администратора';
+    }
+
+    if (isOnlyMod) {
+        const chatsSection = document.getElementById('admin-chats');
+        const chatsTab = document.querySelector('[data-admin-tab="chats"]');
+        if (chatsSection) chatsSection.classList.add('active');
+        if (chatsTab) chatsTab.classList.add('active');
+    } else {
+        const modSection = document.getElementById('admin-moderation');
+        const modTab = document.querySelector('[data-admin-tab="moderation"]');
+        if (modSection) modSection.classList.add('active');
+        if (modTab) modTab.classList.add('active');
+    }
+
+    stopAdminChatMessagesPoll(true);
+    const admMsg = document.getElementById('admin-chats-messages');
+    if (admMsg) admMsg.innerHTML = '';
+    const admHead = document.getElementById('admin-chats-thread-head');
+    if (admHead) admHead.textContent = '';
+    adminPanel.classList.add('active');
     loadAdminData();
+    if (isOnlyMod) {
+        loadAdminChatConversations();
+    }
 }
 
 function switchCabinetTab(type) {
@@ -1269,18 +1333,21 @@ function switchAdminTab(type) {
     });
 
     document.getElementById(`admin-${type}`).classList.add('active');
-    
-    // Находим кнопку и добавляем active
-    const buttons = document.querySelectorAll('.admin-tab');
-    buttons.forEach(btn => {
-        if ((type === 'moderation' && btn.textContent.includes('Модерация')) ||
-            (type === 'custom' && btn.textContent.includes('Индивид')) ||
-            (type === 'users' && btn.textContent.includes('Пользователи'))) {
+
+    document.querySelectorAll('.admin-tab').forEach(btn => {
+        if (btn.dataset.adminTab === type) {
             btn.classList.add('active');
         }
     });
-    
-    loadAdminData();
+
+    stopAdminChatMessagesPoll(type !== 'chats');
+    if (type === 'chats') {
+        loadAdminChatConversations();
+    } else if (type === 'support') {
+        loadAdminSupportStaffUI();
+    } else {
+        loadAdminData();
+    }
 }
 
 // ==================== ТОВАРЫ ====================
@@ -1616,11 +1683,17 @@ async function openSellerPage(sellerId, sellerName, event) {
 
     // БЕЗОПАСНОСТЬ: Используем textContent
     setSafeText('seller-page-name', sellerName);
+    const joinedClear = document.getElementById('seller-page-joined');
+    if (joinedClear) {
+        joinedClear.textContent = '';
+        joinedClear.hidden = true;
+    }
 
     // Загружаем товары продавца
     try {
         const productsResponse = await fetch(`${API_URL}/products`);
-        const products = await productsResponse.json();
+        const productsData = await productsResponse.json();
+        const products = Array.isArray(productsData) ? productsData : (productsData.products || []);
         const sellerProducts = products.filter(p => p.sellerId === sellerId && p.status === 'approved');
 
         const productsGrid = document.getElementById('seller-products-grid');
@@ -1722,13 +1795,20 @@ async function openSellerPage(sellerId, sellerName, event) {
             });
         }
 
-        // Загружаем данные продавца (рейтинг)
-        const userResponse = await fetch(`${API_URL}/users/${sellerId}`, { headers: authBearerHeaders() });
-        const user = await userResponse.json();
+        // Загружаем данные продавца (дата регистрации — из публичного профиля)
+        const userOpts = currentUser ? { headers: authBearerHeaders() } : {};
+        const userResponse = await fetch(`${API_URL}/users/${sellerId}`, userOpts);
+        const user = userResponse.ok ? await userResponse.json() : {};
 
-        // Загружаем количество продаж
-        const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`, { headers: authBearerHeaders() });
-        const sales = await salesResponse.json();
+        // Продажи: только для авторизованных (API)
+        let sales = [];
+        if (currentUser) {
+            const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`, { headers: authBearerHeaders() });
+            if (salesResponse.ok) {
+                const s = await salesResponse.json();
+                sales = Array.isArray(s) ? s : [];
+            }
+        }
 
         // Вычисляем рейтинг из отзывов
         const avgRating = reviews.length > 0
@@ -1736,7 +1816,19 @@ async function openSellerPage(sellerId, sellerName, event) {
             : '--';
 
         const ratingEl = document.getElementById('seller-page-rating');
-        ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${sales.length}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
+        const soldCount = currentUser ? sales.length : '—';
+        ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${soldCount}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
+
+        const joinedEl = document.getElementById('seller-page-joined');
+        if (joinedEl) {
+            if (user && user.createdAt && !user.error) {
+                joinedEl.textContent = `Зарегистрирован: ${formatMoscowDate(user.createdAt)}`;
+                joinedEl.hidden = false;
+            } else {
+                joinedEl.textContent = '';
+                joinedEl.hidden = true;
+            }
+        }
 
     } catch (error) {
         console.error('Ошибка загрузки страницы продавца:', error);
@@ -1795,16 +1887,34 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         }
     } else {
         // Создание готового товара
-        const title = document.getElementById('product-title').value;
-        const university = document.getElementById('product-university').value;
-        const teacher = document.getElementById('product-teacher').value;
-        const category = document.getElementById('product-category').value;
-        const discipline = document.getElementById('product-discipline').value;
-        const price = parseInt(document.getElementById('product-price').value);
-        const deadlineDays = parseInt(document.getElementById('product-deadline').value);
+        const disciplineSelect = document.getElementById('product-discipline');
+        if (disciplineSelect && typeof disciplineSelect._commitProductDisciplineInput === 'function') {
+            disciplineSelect._commitProductDisciplineInput(true);
+        }
 
-        if (!title || !category || !discipline || !price) {
-            showToast('Ошибка', 'Заполните все обязательные поля!', 'error');
+        const title = document.getElementById('product-title').value.trim();
+        const university = (document.getElementById('product-university').value || '').trim();
+        const teacher = document.getElementById('product-teacher').value.trim();
+        const category = document.getElementById('product-category').value;
+        const discipline = (disciplineSelect && disciplineSelect.value ? disciplineSelect.value : '').trim();
+        const priceRaw = document.getElementById('product-price').value;
+        const price = parseInt(priceRaw, 10);
+        const deadlineEl = document.getElementById('product-deadline');
+        const deadlineDays = deadlineEl ? parseInt(deadlineEl.value, 10) : NaN;
+
+        const missing = [];
+        if (!title) missing.push('название работы');
+        if (!university) missing.push('университет');
+        if (!teacher) missing.push('ФИО преподавателя');
+        if (!category) missing.push('категорию');
+        if (!discipline) missing.push('дисциплину');
+        if (!priceRaw.trim() || Number.isNaN(price) || price < 1) missing.push('цену (от 1 ₽)');
+        if (!deadlineEl || !deadlineEl.value || Number.isNaN(deadlineDays) || deadlineDays < 1) {
+            missing.push('срок сдачи');
+        }
+
+        if (missing.length) {
+            showToast('Ошибка', `Заполните все поля: ${missing.join(', ')}.`, 'error');
             return;
         }
 
@@ -1812,6 +1922,11 @@ document.getElementById('add-product-form')?.addEventListener('submit', async fu
         const deadlineDate = new Date();
         deadlineDate.setDate(deadlineDate.getDate() + deadlineDays);
         const deadline = deadlineDate.toISOString();
+
+        if (currentUser.isBlocked) {
+            showToast('Ограничение', 'Вы не можете выставлять товары. Обратитесь в техподдержку.', 'error');
+            return;
+        }
 
         try {
             const response = await fetch(`${API_URL}/products`, {
@@ -2012,19 +2127,7 @@ async function confirmPurchase() {
     const deadline = modal.dataset.deadline;
 
     try {
-        // Обновляем баланс
-        const newBalance = userBalance - productPrice;
-        const updateBalanceResponse = await fetch(`${API_URL}/users/${currentUser.id}/balance`, {
-            method: 'PATCH',
-            headers: authJsonHeaders(),
-            body: JSON.stringify({ balance: newBalance })
-        });
-
-        const updatedUser = await updateBalanceResponse.json();
-        currentUser = updatedUser;
-        sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
-
-        // Создаём покупку
+        // Создаём покупку (списание с баланса только на сервере)
         const purchaseResponse = await fetch(`${API_URL}/purchases`, {
             method: 'POST',
             headers: authJsonHeaders(),
@@ -2039,6 +2142,14 @@ async function confirmPurchase() {
         });
 
         const purchase = await purchaseResponse.json();
+        if (!purchaseResponse.ok) {
+            showToast('Ошибка', purchase.error || 'Не удалось совершить покупку', 'error');
+            return;
+        }
+
+        const newBalance = purchase.buyerBalance != null ? purchase.buyerBalance : userBalance - productPrice;
+        currentUser = { ...currentUser, balance: newBalance };
+        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
 
         // Создаём чат для покупки
         await fetch(`${API_URL}/chat`, {
@@ -2078,6 +2189,133 @@ async function confirmPurchase() {
 
 // ==================== ЛИЧНЫЙ КАБИНЕТ ====================
 
+const WALLET_TOPUP_FEE = 0.07;
+
+function updateWalletTopupPreview() {
+    const el = document.getElementById('wallet-topup-net');
+    const out = document.getElementById('wallet-topup-preview');
+    if (!el || !out) return;
+    const net = parseInt(el.value, 10);
+    if (!net || net < 1) {
+        out.textContent = '';
+        return;
+    }
+    const fee = Math.max(0, Math.round(net * WALLET_TOPUP_FEE));
+    out.textContent = `К оплате через эквайера: ${net + fee} ₽ (на баланс ${net} ₽, комиссия ${fee} ₽). Сейчас кнопка «Пополнить» зачисляет без реальной оплаты.`;
+}
+
+async function walletTopup() {
+    if (!currentUser) return;
+    const input = document.getElementById('wallet-topup-net');
+    const net = parseInt(input && input.value, 10);
+    if (!net || net < 1) {
+        showToast('Ошибка', 'Укажите сумму пополнения', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/wallet/topup`, {
+            method: 'POST',
+            headers: { ...authBearerHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ netAmount: net })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast('Ошибка', data.error || 'Не удалось пополнить', 'error');
+            return;
+        }
+        showToast('Баланс', `${data.message}. Зачислено ${data.credited} ₽.`, 'success', 5000);
+        input.value = '';
+        updateWalletTopupPreview();
+        await loadCabinetData();
+        await loadSalesData();
+    } catch (e) {
+        console.error(e);
+        showToast('Ошибка', 'Сеть или сервер', 'error');
+    }
+}
+
+async function walletWithdrawSbp() {
+    if (!currentUser) return;
+    const amtEl = document.getElementById('wallet-withdraw-amount');
+    const phoneEl = document.getElementById('wallet-withdraw-phone');
+    const amount = parseInt(amtEl && amtEl.value, 10);
+    const phone = phoneEl && phoneEl.value.trim();
+    if (!amount || amount < 10) {
+        showToast('Ошибка', 'Минимальная сумма вывода 10 ₽', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/wallet/withdraw-sbp`, {
+            method: 'POST',
+            headers: { ...authBearerHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, phone })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast('Ошибка', data.error || 'Вывод недоступен', 'error');
+            return;
+        }
+        showToast('Вывод', `${data.message} Комиссия ${data.fee} ₽, к получению ${data.netPayout} ₽.`, 'success', 6000);
+        amtEl.value = '';
+        phoneEl.value = '';
+        await loadSalesData();
+    } catch (e) {
+        console.error(e);
+        showToast('Ошибка', 'Сеть или сервер', 'error');
+    }
+}
+
+async function confirmPurchaseCompletion(purchaseId) {
+    if (!currentUser || !purchaseId) return;
+    try {
+        const res = await fetch(`${API_URL}/purchases/${purchaseId}/confirm-completion`, {
+            method: 'POST',
+            headers: authBearerHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast('Ошибка', data.error || 'Не удалось подтвердить', 'error');
+            return;
+        }
+        showToast('Заказ', data.message || 'Выполнение подтверждено', 'success', 4000);
+        await loadCabinetData();
+        await loadSalesData();
+        await updateChatPurchaseActions();
+    } catch (e) {
+        console.error(e);
+        showToast('Ошибка', 'Сеть или сервер', 'error');
+    }
+}
+
+async function updateChatPurchaseActions() {
+    const host = document.getElementById('chat-purchase-actions');
+    if (!host || !currentUser || !currentChatPurchaseId) {
+        return;
+    }
+    host.innerHTML = '';
+    if (currentChatPurchaseId === 'new') return;
+    try {
+        const res = await fetch(`${API_URL}/purchases/${currentChatPurchaseId}`, { headers: authBearerHeaders() });
+        if (!res.ok) return;
+        const p = await res.json();
+        const canConfirm =
+            currentUser.id === p.buyerId &&
+            p.status === 'active' &&
+            p.fileAttached &&
+            (p.buyerConfirmedAt == null || p.buyerConfirmedAt === '');
+        if (!canConfirm) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-signup btn-confirm-order';
+        btn.dataset.action = 'confirm-purchase-completion';
+        btn.dataset.purchaseId = String(p.id);
+        btn.textContent = 'Подтвердить выполнение заказа';
+        host.appendChild(btn);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
 async function loadCabinetData() {
     if (!currentUser) return;
 
@@ -2085,7 +2323,7 @@ async function loadCabinetData() {
         // Получаем актуальные данные пользователя
         const userResponse = await fetch(`${API_URL}/users/${currentUser.id}`, { headers: authBearerHeaders() });
         const user = await userResponse.json();
-        document.getElementById('user-balance').textContent = user.balance || 10000;
+        document.getElementById('user-balance').textContent = user.balance != null ? user.balance : 0;
 
         // Загружаем покупки (для заказчика)
         const purchasesResponse = await fetch(`${API_URL}/users/${currentUser.id}/purchases`, { headers: authBearerHeaders() });
@@ -2108,6 +2346,19 @@ async function loadCabinetData() {
                     fileAction = '<span style="color: var(--text-secondary); font-size: 0.9em;">Файл ещё не загружен продавцом</span>';
                 }
 
+                const canConfirmOrder =
+                    purchase.status === 'active' &&
+                    purchase.fileAttached &&
+                    (purchase.buyerConfirmedAt == null || purchase.buyerConfirmedAt === '');
+                const confirmOrderBtn = canConfirmOrder
+                    ? `<button type="button" class="btn-signup btn-confirm-order" data-action="confirm-purchase-completion" data-purchase-id="${purchase.id}">Подтвердить выполнение заказа</button>`
+                    : '';
+
+                const confirmedLabel =
+                    purchase.buyerConfirmedAt != null && purchase.buyerConfirmedAt !== ''
+                        ? '<span class="purchase-confirmed-label" style="color: var(--accent-warm); font-size: 0.85em;">Выполнение подтверждено</span>'
+                        : '';
+
                 // Кнопка оставить отзыв (если файла ещё нет или уже есть отзыв)
                 const reviewBtn = !purchase.fileAttached
                     ? ''
@@ -2129,7 +2380,7 @@ async function loadCabinetData() {
                 
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'purchase-actions';
-                actionsDiv.innerHTML = fileAction + reviewBtn;
+                actionsDiv.innerHTML = fileAction + confirmOrderBtn + confirmedLabel + reviewBtn;
                 
                 item.appendChild(infoDiv);
                 item.appendChild(actionsDiv);
@@ -2142,6 +2393,8 @@ async function loadCabinetData() {
         if (ratingElement) {
             ratingElement.textContent = user.rating ? user.rating.toFixed(1) : 'Нет отзывов';
         }
+
+        updateWalletTopupPreview();
     } catch (error) {
         console.error('Ошибка загрузки данных кабинета:', error);
     }
@@ -2152,6 +2405,17 @@ async function loadSalesData() {
     if (!currentUser) return;
 
     try {
+        const wRes = await fetch(`${API_URL}/wallet`, { headers: authBearerHeaders() });
+        if (wRes.ok) {
+            const w = await wRes.json();
+            const sw = document.getElementById('seller-withdrawable');
+            const sm = document.getElementById('seller-maturing');
+            const sa = document.getElementById('seller-awaiting');
+            if (sw) sw.textContent = w.sellerWithdrawable != null ? w.sellerWithdrawable : 0;
+            if (sm) sm.textContent = w.sellerMaturing != null ? w.sellerMaturing : 0;
+            if (sa) sa.textContent = w.sellerAwaitingBuyerConfirm != null ? w.sellerAwaitingBuyerConfirm : 0;
+        }
+
         console.log('[SALES] Загрузка продаж для пользователя:', currentUser.id);
         // Загружаем продажи (для продавца)
         const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
@@ -2301,10 +2565,49 @@ async function loadProductsData() {
 
 // ==================== АДМИН-ПАНЕЛЬ ====================
 
+function productCategoryLabelRu(category) {
+    const map = {
+        practices: 'Практические работы',
+        labs: 'Лабораторные работы',
+        courses: 'Курсовые работы'
+    };
+    return map[category] || category || '—';
+}
+
+function formatProductDeadlineHuman(deadline) {
+    if (deadline == null || deadline === '') return '—';
+    const d = new Date(deadline);
+    if (Number.isNaN(d.getTime())) return String(deadline);
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** Все поля товара для модерации (только textContent). */
+function appendProductModerationDetails(container, product) {
+    const lines = [
+        ['Категория', productCategoryLabelRu(product.category)],
+        ['Дисциплина', product.discipline || '—'],
+        ['Университет', (product.university && String(product.university).trim()) || '—'],
+        ['Преподаватель', (product.teacher && String(product.teacher).trim()) || '—'],
+        ['Цена', `${product.price} ₽`],
+        ['Срок сдачи', formatProductDeadlineHuman(product.deadline)],
+        ['Продавец', product.sellerName || '—']
+    ];
+    if (product.sellerId) {
+        lines.push(['ID продавца', String(product.sellerId)]);
+    }
+    lines.forEach(([label, value]) => {
+        const line = document.createElement('span');
+        line.className = 'meta admin-product-detail-line';
+        line.textContent = `${label}: ${value}`;
+        container.appendChild(line);
+    });
+}
+
 async function loadAdminData() {
-    if (!currentUser || !currentUser.isAdmin) return;
+    if (!currentUser || !isStaffUser()) return;
 
     try {
+        if (currentUser.isAdmin) {
         // Загружаем ВСЕ товары (включая pending)
         const productsResponse = await fetch(`${API_URL}/products/all`, { headers: authBearerHeaders() });
         const products = await productsResponse.json();
@@ -2327,13 +2630,13 @@ async function loadAdminData() {
                 const titleEl = document.createElement('span');
                 titleEl.className = 'title';
                 titleEl.textContent = product.title;
-                
-                const metaEl = document.createElement('span');
-                metaEl.className = 'meta';
-                metaEl.textContent = `${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}`;
-                
+
+                const detailsEl = document.createElement('div');
+                detailsEl.className = 'admin-product-details';
+                appendProductModerationDetails(detailsEl, product);
+
                 infoDiv.appendChild(titleEl);
-                infoDiv.appendChild(metaEl);
+                infoDiv.appendChild(detailsEl);
                 
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'admin-actions';
@@ -2375,13 +2678,13 @@ async function loadAdminData() {
                 const titleEl = document.createElement('span');
                 titleEl.className = 'title';
                 titleEl.textContent = product.title;
-                
-                const metaEl = document.createElement('span');
-                metaEl.className = 'meta';
-                metaEl.textContent = `${product.discipline} • ${product.price} ₽ • Продавец: ${product.sellerName}`;
+
+                const detailsEl = document.createElement('div');
+                detailsEl.className = 'admin-product-details';
+                appendProductModerationDetails(detailsEl, product);
                 
                 infoDiv.appendChild(titleEl);
-                infoDiv.appendChild(metaEl);
+                infoDiv.appendChild(detailsEl);
                 
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'admin-actions';
@@ -2499,6 +2802,7 @@ async function loadAdminData() {
                 approvedRequestsList.appendChild(item);
             });
         }
+        }
 
         // Загружаем пользователей
         const usersResponse = await fetch(`${API_URL}/users`, { headers: authBearerHeaders() });
@@ -2539,7 +2843,9 @@ async function loadAdminData() {
                 const statusSpan = document.createElement('span');
                 statusSpan.className = `user-status ${statusClass}`;
                 statusSpan.textContent = statusText;
-                
+
+                const modOnly = currentUser.isModerator && !currentUser.isAdmin;
+
                 const actionBtn = document.createElement('button');
                 if (user.isBlocked) {
                     actionBtn.className = 'btn-unblock';
@@ -2550,10 +2856,26 @@ async function loadAdminData() {
                     actionBtn.textContent = 'Заблокировать';
                     actionBtn.onclick = () => blockUser(user.id);
                 }
-                
+
                 actionsDiv.appendChild(statusSpan);
-                actionsDiv.appendChild(actionBtn);
-                
+                if (modOnly && user.isModerator) {
+                    const hint = document.createElement('span');
+                    hint.className = 'form-hint';
+                    hint.textContent = 'Модератор';
+                    actionsDiv.appendChild(hint);
+                } else {
+                    actionsDiv.appendChild(actionBtn);
+                }
+
+                if (currentUser.isAdmin) {
+                    const modBtn = document.createElement('button');
+                    modBtn.className = user.isModerator ? 'btn-reject' : 'btn-approve';
+                    modBtn.textContent = user.isModerator ? 'Снять модератора' : 'Сделать модератором';
+                    modBtn.style.marginLeft = '0.35rem';
+                    modBtn.onclick = () => setUserModerator(user.id, !user.isModerator);
+                    actionsDiv.appendChild(modBtn);
+                }
+
                 item.appendChild(infoDiv);
                 item.appendChild(actionsDiv);
                 usersList.appendChild(item);
@@ -2656,6 +2978,384 @@ async function rejectCustomRequest(requestId) {
     }
 }
 
+let adminChatSelectedPurchaseId = null;
+let adminChatCurrentConv = null;
+let adminChatMessagesInterval = null;
+let adminSupportSelectedTicketId = null;
+
+function openSupportModal() {
+    if (!currentUser) {
+        openModal('login');
+        showToast('Информация', 'Войдите в аккаунт, чтобы обратиться в поддержку', 'info');
+        return;
+    }
+    const modal = document.getElementById('support-modal');
+    if (modal) modal.classList.add('active');
+    loadMySupportTicketsIntoModal();
+}
+
+function closeSupportModal() {
+    const modal = document.getElementById('support-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function loadMySupportTicketsIntoModal() {
+    const el = document.getElementById('support-my-tickets');
+    if (!el || !currentUser) return;
+    el.textContent = 'Загрузка…';
+    try {
+        const r = await fetch(`${API_URL}/support/my-tickets`, { headers: authBearerHeaders() });
+        const rows = await r.json();
+        if (!r.ok) {
+            el.innerHTML = '';
+            return;
+        }
+        el.innerHTML = '';
+        if (!rows.length) {
+            el.innerHTML = '<p style="color:var(--text-secondary)">Пока нет обращений</p>';
+            return;
+        }
+        rows.forEach((t) => {
+            const d = document.createElement('div');
+            d.className = 'support-ticket-row';
+            const strong = document.createElement('strong');
+            strong.textContent = `#${t.id}`;
+            d.appendChild(strong);
+            d.appendChild(document.createTextNode(' · '));
+            const sub = document.createElement('span');
+            sub.textContent = t.subject || '';
+            d.appendChild(sub);
+            const st = document.createElement('span');
+            st.style.color = 'var(--text-muted)';
+            st.textContent = ` (${t.status})`;
+            d.appendChild(st);
+            el.appendChild(d);
+        });
+    } catch {
+        el.innerHTML = '';
+    }
+}
+
+async function loadAdminSupportStaffUI() {
+    if (!isStaffUser()) return;
+    const listEl = document.getElementById('admin-support-tickets-list');
+    const headEl = document.getElementById('admin-support-thread-head');
+    const msgEl = document.getElementById('admin-support-thread-messages');
+    const replyWrap = document.getElementById('admin-support-reply-wrap');
+    if (!listEl) return;
+    listEl.innerHTML = '<p style="color:var(--text-secondary)">Загрузка…</p>';
+    if (headEl) headEl.textContent = '';
+    if (msgEl) msgEl.innerHTML = '';
+    if (replyWrap) replyWrap.style.display = 'none';
+    adminSupportSelectedTicketId = null;
+    try {
+        const r = await fetch(`${API_URL}/support/tickets`, { headers: authBearerHeaders() });
+        const tickets = await r.json();
+        if (!r.ok) {
+            listEl.innerHTML = `<p style="color:var(--danger)">${escapeHTML(tickets.error || 'Ошибка')}</p>`;
+            return;
+        }
+        listEl.innerHTML = '';
+        if (!tickets.length) {
+            listEl.innerHTML = '<p style="color:var(--text-secondary)">Нет обращений</p>';
+            return;
+        }
+        tickets.forEach((t) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'admin-chat-conv-item';
+            item.dataset.ticketId = String(t.id);
+            const title = document.createElement('span');
+            title.className = 'admin-chat-conv-item__title';
+            title.textContent = `#${t.id} · ${t.subject || ''}`;
+            const meta = document.createElement('span');
+            meta.className = 'admin-chat-conv-item__meta';
+            meta.textContent = `${t.userName || ''} · ${t.status || ''}`;
+            item.appendChild(title);
+            item.appendChild(meta);
+            item.addEventListener('click', () => selectAdminSupportTicket(t.id));
+            listEl.appendChild(item);
+        });
+    } catch {
+        listEl.innerHTML = '<p style="color:var(--danger)">Ошибка сети</p>';
+    }
+}
+
+async function selectAdminSupportTicket(ticketId) {
+    adminSupportSelectedTicketId = ticketId;
+    document.querySelectorAll('#admin-support-tickets-list .admin-chat-conv-item').forEach((el) => {
+        el.classList.toggle('is-selected', el.dataset.ticketId === String(ticketId));
+    });
+    const headEl = document.getElementById('admin-support-thread-head');
+    const msgEl = document.getElementById('admin-support-thread-messages');
+    const replyWrap = document.getElementById('admin-support-reply-wrap');
+    const ta = document.getElementById('admin-support-reply-text');
+    try {
+        const r = await fetch(`${API_URL}/support/tickets/${ticketId}`, { headers: authBearerHeaders() });
+        const data = await r.json();
+        if (!r.ok) return;
+        const { ticket, messages } = data;
+        if (headEl) {
+            headEl.textContent = `#${ticket.id} · ${ticket.subject} · ${ticket.status}`;
+        }
+        if (msgEl) {
+            msgEl.innerHTML = '';
+            const intro = document.createElement('div');
+            intro.className = 'admin-chat-msg';
+            const introText = document.createElement('div');
+            introText.className = 'admin-chat-msg-text';
+            introText.textContent = ticket.body || '';
+            const introMeta = document.createElement('div');
+            introMeta.className = 'admin-chat-msg-meta';
+            introMeta.textContent = 'Текст обращения';
+            intro.appendChild(introText);
+            intro.appendChild(introMeta);
+            msgEl.appendChild(intro);
+            (messages || []).forEach((m) => {
+                const w = document.createElement('div');
+                w.className = 'admin-chat-msg';
+                const who = document.createElement('div');
+                who.className = 'admin-chat-msg-sender';
+                who.textContent = m.isStaff ? 'Поддержка' : 'Пользователь';
+                const tx = document.createElement('div');
+                tx.className = 'admin-chat-msg-text';
+                tx.textContent = m.message || '';
+                w.appendChild(who);
+                w.appendChild(tx);
+                msgEl.appendChild(w);
+            });
+        }
+        if (replyWrap && ta) {
+            ta.value = '';
+            replyWrap.style.display = ticket.status === 'open' ? 'block' : 'none';
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+async function sendAdminSupportReply() {
+    if (!adminSupportSelectedTicketId || !currentUser) return;
+    const ta = document.getElementById('admin-support-reply-text');
+    const text = (ta && ta.value.trim()) || '';
+    if (!text) {
+        showToast('Ошибка', 'Введите текст ответа', 'error');
+        return;
+    }
+    try {
+        const r = await fetch(`${API_URL}/support/tickets/${adminSupportSelectedTicketId}/messages`, {
+            method: 'POST',
+            headers: authJsonHeaders(),
+            body: JSON.stringify({ message: text })
+        });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            showToast('Ошибка', err.error || 'Не отправлено', 'error');
+            return;
+        }
+        showToast('Успешно', 'Ответ отправлен', 'success');
+        if (ta) ta.value = '';
+        await selectAdminSupportTicket(adminSupportSelectedTicketId);
+        loadAdminSupportStaffUI();
+    } catch {
+        showToast('Ошибка', 'Ошибка сети', 'error');
+    }
+}
+
+async function closeAdminSupportTicket() {
+    if (!adminSupportSelectedTicketId) return;
+    try {
+        const r = await fetch(`${API_URL}/support/tickets/${adminSupportSelectedTicketId}/close`, {
+            method: 'PATCH',
+            headers: authBearerHeaders()
+        });
+        if (!r.ok) return;
+        showToast('Информация', 'Обращение закрыто', 'info');
+        loadAdminSupportStaffUI();
+    } catch {
+        /* ignore */
+    }
+}
+
+async function syncCurrentUserFromServer() {
+    if (!authToken()) return;
+    try {
+        const r = await fetch(`${API_URL}/auth/me`, { headers: authBearerHeaders() });
+        if (!r.ok) return;
+        const me = await r.json();
+        const token = currentUser.token || currentUser.accessToken;
+        const refreshToken = currentUser.refreshToken;
+        currentUser = {
+            ...currentUser,
+            ...me,
+            photoUrl: me.photo_url || currentUser.photoUrl,
+            token: token || currentUser.token,
+            refreshToken: refreshToken || currentUser.refreshToken
+        };
+        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+    } catch {
+        /* ignore */
+    }
+}
+
+function stopAdminChatMessagesPoll(clearSelection = false) {
+    if (adminChatMessagesInterval) {
+        clearInterval(adminChatMessagesInterval);
+        adminChatMessagesInterval = null;
+        revokeChatAttachmentBlobUrls();
+    }
+    if (clearSelection) {
+        adminChatSelectedPurchaseId = null;
+        adminChatCurrentConv = null;
+    }
+}
+
+async function loadAdminChatConversations() {
+    if (!currentUser || !isStaffUser()) return;
+
+    const listEl = document.getElementById('admin-chats-conversations-list');
+    const headEl = document.getElementById('admin-chats-thread-head');
+    const msgEl = document.getElementById('admin-chats-messages');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<p style="color: var(--text-secondary);">Загрузка…</p>';
+    if (headEl) headEl.textContent = '';
+    if (msgEl) msgEl.innerHTML = '';
+
+    try {
+        const response = await fetch(`${API_URL}/admin/chat-conversations`, { headers: authBearerHeaders() });
+        const data = await response.json();
+
+        if (!response.ok) {
+            listEl.innerHTML = `<p style="color: var(--danger);">${escapeHTML(data.error || 'Ошибка загрузки')}</p>`;
+            return;
+        }
+
+        const conversations = Array.isArray(data) ? data : [];
+        listEl.innerHTML = '';
+
+        if (conversations.length === 0) {
+            listEl.innerHTML = '<p style="color: var(--text-secondary);">Нет переписок с сообщениями</p>';
+            return;
+        }
+
+        conversations.forEach((c) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'admin-chat-conv-item';
+            item.dataset.purchaseId = String(c.purchaseId);
+
+            const title = document.createElement('span');
+            title.className = 'admin-chat-conv-item__title';
+            title.textContent = c.title || `Заказ #${c.purchaseId}`;
+
+            const meta = document.createElement('span');
+            meta.className = 'admin-chat-conv-item__meta';
+            const pair = `${c.buyerName || 'Покупатель'} ↔ ${c.sellerName || 'Продавец'}`;
+            const when = c.lastTime ? formatMoscowDate(c.lastTime) : '';
+            const cnt = typeof c.messageCount === 'number' ? c.messageCount : '';
+            meta.textContent = [pair, when && `${when}`, cnt && `${cnt} сообщ.`].filter(Boolean).join(' · ');
+
+            const preview = document.createElement('span');
+            preview.className = 'admin-chat-conv-item__preview';
+            const lm = (c.lastMessage || '').trim();
+            preview.textContent = lm.length > 120 ? `${lm.slice(0, 120)}…` : lm;
+
+            item.appendChild(title);
+            item.appendChild(meta);
+            if (lm) item.appendChild(preview);
+
+            item.addEventListener('click', () => selectAdminChatConversation(c));
+            listEl.appendChild(item);
+        });
+    } catch (error) {
+        console.error('Ошибка загрузки переписок (админ):', error);
+        listEl.innerHTML = '<p style="color: var(--danger);">Ошибка подключения</p>';
+    }
+}
+
+async function loadAdminChatThreadMessages() {
+    if (!adminChatSelectedPurchaseId || !currentUser || !isStaffUser()) return;
+
+    const msgContainer = document.getElementById('admin-chats-messages');
+    if (!msgContainer) return;
+
+    try {
+        const response = await fetch(
+            `${API_URL}/chat/${adminChatSelectedPurchaseId}?limit=200`,
+            { headers: authBearerHeaders() }
+        );
+        const raw = await response.json();
+        const messages = Array.isArray(raw) ? raw : (raw.messages || []);
+
+        if (!response.ok) {
+            revokeChatAttachmentBlobUrls();
+            msgContainer.innerHTML = `<p style="color: var(--danger);">${escapeHTML(raw.error || 'Нет доступа к чату')}</p>`;
+            return;
+        }
+
+        revokeChatAttachmentBlobUrls();
+        msgContainer.innerHTML = '';
+        const conv = adminChatCurrentConv;
+
+        messages.forEach((msg) => {
+            const wrap = document.createElement('div');
+            wrap.className = 'admin-chat-msg';
+
+            const who = document.createElement('div');
+            who.className = 'admin-chat-msg-sender';
+            if (conv && String(msg.senderId) === String(conv.buyerId)) {
+                who.textContent = `Покупатель (${conv.buyerName || msg.senderId})`;
+            } else if (conv && String(msg.senderId) === String(conv.sellerId)) {
+                who.textContent = `Продавец (${conv.sellerName || msg.senderId})`;
+            } else {
+                who.textContent = `Участник (${msg.senderId})`;
+            }
+            wrap.appendChild(who);
+
+            if (msg.message) {
+                const text = document.createElement('div');
+                text.className = 'admin-chat-msg-text';
+                text.textContent = msg.message;
+                wrap.appendChild(text);
+            }
+            if (msg.fileName) {
+                appendChatFileAttachment(wrap, msg, 'admin-chat-msg-file');
+            }
+            if (msg.createdAt) {
+                const meta = document.createElement('div');
+                meta.className = 'admin-chat-msg-meta';
+                meta.textContent = formatMoscowTime(msg.createdAt);
+                wrap.appendChild(meta);
+            }
+
+            msgContainer.appendChild(wrap);
+        });
+
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+    } catch (error) {
+        console.error('Ошибка загрузки сообщений (админ):', error);
+    }
+}
+
+function selectAdminChatConversation(conv) {
+    document.querySelectorAll('.admin-chat-conv-item').forEach((el) => {
+        el.classList.toggle('is-selected', String(conv.purchaseId) === el.dataset.purchaseId);
+    });
+
+    const headEl = document.getElementById('admin-chats-thread-head');
+    if (headEl) {
+        headEl.textContent =
+            `${conv.title || 'Заказ'} · #${conv.purchaseId} · ${conv.buyerName || 'Покупатель'} ↔ ${conv.sellerName || 'Продавец'}`;
+    }
+
+    stopAdminChatMessagesPoll(false);
+    adminChatSelectedPurchaseId = conv.purchaseId;
+    adminChatCurrentConv = conv;
+    adminChatMessagesInterval = setInterval(loadAdminChatThreadMessages, 4000);
+    loadAdminChatThreadMessages();
+}
+
 // Блокировка пользователя
 async function blockUser(userId) {
     try {
@@ -2672,6 +3372,26 @@ async function blockUser(userId) {
 
         const user = await response.json();
         showToast('Успешно', `Пользователь ${user.name} заблокирован`, 'success');
+        loadAdminData();
+    } catch (error) {
+        showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
+        console.error(error);
+    }
+}
+
+async function setUserModerator(userId, isModerator) {
+    try {
+        const response = await fetch(`${API_URL}/users/${userId}/moderator`, {
+            method: 'PATCH',
+            headers: authJsonHeaders(),
+            body: JSON.stringify({ isModerator })
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            showToast('Ошибка', err.error || 'Не удалось изменить роль', 'error');
+            return;
+        }
+        showToast('Успешно', isModerator ? 'Пользователь назначен модератором' : 'Роль модератора снята', 'success');
         loadAdminData();
     } catch (error) {
         showToast('Ошибка', 'Ошибка подключения к серверу', 'error');
@@ -2890,6 +3610,103 @@ async function submitReview() {
 let currentChatPurchaseId = null;
 let currentChatInterval = null;
 let selectedFileForChat = null;
+/** Blob URL для превью вложений в чате — освобождаем при перерисовке. */
+let chatAttachmentBlobUrls = [];
+
+function revokeChatAttachmentBlobUrls() {
+    chatAttachmentBlobUrls.forEach((u) => URL.revokeObjectURL(u));
+    chatAttachmentBlobUrls = [];
+}
+
+/** Нормализует MIME (некоторые ОС дают image/jpg вместо image/jpeg). */
+function normalizeChatFileMime(mime) {
+    if (!mime) return '';
+    const m = String(mime).trim().toLowerCase();
+    if (m === 'image/jpg') return 'image/jpeg';
+    return String(mime).trim();
+}
+
+function chatFileDataToBase64(fileData) {
+    if (fileData == null || fileData === '') return '';
+    if (typeof fileData === 'string') return fileData;
+    if (typeof fileData === 'object' && fileData.type === 'Buffer' && Array.isArray(fileData.data)) {
+        const bytes = new Uint8Array(fileData.data);
+        let binary = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        return btoa(binary);
+    }
+    return '';
+}
+
+function isChatImageFile(fileType, fileName) {
+    const m = (normalizeChatFileMime(fileType) || '').toLowerCase();
+    if (m.startsWith('image/')) return true;
+    return /\.(png|jpe?g|gif|webp)$/i.test(fileName || '');
+}
+
+/**
+ * Вложение в сообщении: для изображений — превью + ссылка скачать, иначе только ссылка.
+ * @param {HTMLElement} container
+ * @param {object} msg
+ * @param {string} fileDivClass
+ */
+function appendChatFileAttachment(container, msg, fileDivClass) {
+    if (!msg.fileName) return;
+
+    const fileDiv = document.createElement('div');
+    fileDiv.className = fileDivClass;
+
+    const b64 = chatFileDataToBase64(msg.fileData);
+    const mime = normalizeChatFileMime(msg.fileType) || 'application/octet-stream';
+    const dataHref = b64 ? `data:${mime};base64,${b64}` : '';
+    const isImage = isChatImageFile(msg.fileType, msg.fileName) && Boolean(b64);
+
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = `${getFileIcon(msg.fileType)} `;
+    fileDiv.appendChild(iconSpan);
+
+    if (isImage && dataHref) {
+        let displaySrc = '';
+        try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mime || 'image/png' });
+            displaySrc = URL.createObjectURL(blob);
+            chatAttachmentBlobUrls.push(displaySrc);
+        } catch (e) {
+            displaySrc = dataHref;
+        }
+        if (displaySrc) {
+            const img = document.createElement('img');
+            img.className = 'chat-file-preview-img';
+            img.src = displaySrc;
+            img.alt = msg.fileName;
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            fileDiv.appendChild(img);
+        }
+    }
+
+    if (dataHref) {
+        const link = document.createElement('a');
+        link.href = dataHref;
+        link.download = msg.fileName;
+        link.textContent = isImage ? 'Скачать' : msg.fileName;
+        link.rel = 'noopener noreferrer';
+        if (isImage) link.className = 'chat-file-download-link';
+        fileDiv.appendChild(link);
+    } else {
+        const span = document.createElement('span');
+        span.textContent = msg.fileName;
+        fileDiv.appendChild(span);
+    }
+
+    container.appendChild(fileDiv);
+}
 
 // Загрузка списка чатов
 async function loadChatsList() {
@@ -2945,6 +3762,7 @@ async function openChat(purchaseId, counterpartName, purchaseTitle) {
 
     // Загружаем сообщения
     await loadChatMessages();
+    await updateChatPurchaseActions();
 
     // Автообновление каждые 3 секунды
     if (currentChatInterval) clearInterval(currentChatInterval);
@@ -2965,14 +3783,20 @@ async function loadChatMessages() {
 
     try {
         const response = await fetch(`${API_URL}/chat/${currentChatPurchaseId}`, { headers: authBearerHeaders() });
-        const messages = await response.json();
+        const raw = await response.json();
+        if (!response.ok) {
+            console.error('Ошибка загрузки сообщений:', raw);
+            return;
+        }
+        const messages = Array.isArray(raw) ? raw : (raw.messages || []);
 
         const messagesContainer = document.getElementById('chat-messages');
+        revokeChatAttachmentBlobUrls();
         messagesContainer.innerHTML = '';
 
         messages.forEach(msg => {
             const messageDiv = document.createElement('div');
-            const isSent = msg.senderId === currentUser.id;
+            const isSent = String(msg.senderId) === String(currentUser.id);
             messageDiv.className = `chat-message ${isSent ? 'sent' : 'received'}`;
 
             // БЕЗОПАСНОСТЬ: Используем textContent вместо innerHTML
@@ -2982,20 +3806,7 @@ async function loadChatMessages() {
                 messageDiv.appendChild(msgEl);
             }
             if (msg.fileName) {
-                const fileDiv = document.createElement('div');
-                fileDiv.className = 'chat-message-file';
-                
-                const iconSpan = document.createElement('span');
-                iconSpan.textContent = getFileIcon(msg.fileType) + ' ';
-                
-                const link = document.createElement('a');
-                link.href = `data:${msg.fileType || 'application/octet-stream'};base64,${msg.fileData}`;
-                link.download = msg.fileName;
-                link.textContent = msg.fileName;
-                
-                fileDiv.appendChild(iconSpan);
-                fileDiv.appendChild(link);
-                messageDiv.appendChild(fileDiv);
+                appendChatFileAttachment(messageDiv, msg, 'chat-message-file');
             }
             if (msg.createdAt) {
                 const metaDiv = document.createElement('div');
@@ -3009,6 +3820,7 @@ async function loadChatMessages() {
 
         // Прокрутка вниз
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        await updateChatPurchaseActions();
     } catch (error) {
         console.error('Ошибка загрузки сообщений:', error);
     }
@@ -3020,7 +3832,10 @@ function closeChatWindow() {
         clearInterval(currentChatInterval);
         currentChatInterval = null;
     }
+    revokeChatAttachmentBlobUrls();
     currentChatPurchaseId = null;
+    const cap = document.getElementById('chat-purchase-actions');
+    if (cap) cap.innerHTML = '';
     document.getElementById('chat-window').style.display = 'none';
     document.getElementById('chat-list').style.display = 'block';
     selectedFileForChat = null;
@@ -3188,9 +4003,21 @@ function handleChatFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    let effectiveType = file.type;
+    if (!effectiveType || effectiveType === 'application/octet-stream') {
+        if (ext === 'png') effectiveType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') effectiveType = 'image/jpeg';
+        else if (ext === 'pdf') effectiveType = 'application/pdf';
+        else if (ext === 'doc') effectiveType = 'application/msword';
+        else if (ext === 'docx') {
+            effectiveType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        }
+    }
+
     // Проверка типа файла
     const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'image/jpg'];
-    if (!allowedTypes.includes(file.type)) {
+    if (!allowedTypes.includes(effectiveType)) {
         showToast('Ошибка', 'Разрешены только файлы: PDF, DOC, DOCX, PNG, JPG', 'error');
         event.target.value = '';
         return;
@@ -3208,7 +4035,7 @@ function handleChatFileSelect(event) {
         selectedFileForChat = {
             name: file.name,
             data: e.target.result.split(',')[1],
-            type: file.type
+            type: normalizeChatFileMime(effectiveType) || effectiveType
         };
         updateFilePreview();
     };
@@ -3426,6 +4253,24 @@ function setupEventListeners() {
             case 'open-admin':
                 openAdminPanel();
                 break;
+            case 'admin-chats-refresh':
+                loadAdminChatConversations();
+                break;
+            case 'open-support-modal':
+                openSupportModal();
+                break;
+            case 'close-support-modal':
+                closeSupportModal();
+                break;
+            case 'admin-support-refresh':
+                loadAdminSupportStaffUI();
+                break;
+            case 'admin-support-send':
+                sendAdminSupportReply();
+                break;
+            case 'admin-support-close':
+                closeAdminSupportTicket();
+                break;
             case 'logout':
                 logout();
                 break;
@@ -3473,6 +4318,15 @@ function setupEventListeners() {
                 break;
             case 'confirm-purchase':
                 confirmPurchase();
+                break;
+            case 'wallet-topup':
+                walletTopup();
+                break;
+            case 'wallet-withdraw':
+                walletWithdrawSbp();
+                break;
+            case 'confirm-purchase-completion':
+                confirmPurchaseCompletion(parseInt(target.dataset.purchaseId, 10));
                 break;
             case 'contact-seller-from-confirm':
                 contactSellerFromConfirm();
@@ -3542,6 +4396,7 @@ function setupEventListeners() {
         const adminTab = event.target.closest('[data-admin-tab]');
         if (adminTab) {
             switchAdminTab(adminTab.dataset.adminTab);
+            return;
         }
     });
 
@@ -3640,6 +4495,41 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('StudentMarket загружен');
 
+    document.getElementById('wallet-topup-net')?.addEventListener('input', updateWalletTopupPreview);
+
+    document.getElementById('support-ticket-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) {
+            showToast('Ошибка', 'Войдите в аккаунт', 'error');
+            return;
+        }
+        const subject = document.getElementById('support-subject')?.value.trim() || '';
+        const category = document.getElementById('support-category')?.value || 'other';
+        const message = document.getElementById('support-message')?.value.trim() || '';
+        if (!subject || !message) {
+            showToast('Ошибка', 'Заполните тему и текст обращения', 'error');
+            return;
+        }
+        try {
+            const r = await fetch(`${API_URL}/support/tickets`, {
+                method: 'POST',
+                headers: authJsonHeaders(),
+                body: JSON.stringify({ subject, category, message })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                showToast('Ошибка', data.error || 'Не удалось отправить', 'error');
+                return;
+            }
+            showToast('Успешно', 'Обращение отправлено', 'success');
+            document.getElementById('support-subject').value = '';
+            document.getElementById('support-message').value = '';
+            loadMySupportTicketsIntoModal();
+        } catch {
+            showToast('Ошибка', 'Сеть', 'error');
+        }
+    });
+
     // Проверяем VK OAuth callback
     if (window.location.pathname === '/auth/vk/callback') {
         const urlParams = new URLSearchParams(window.location.search);
@@ -3657,6 +4547,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentUser = JSON.parse(savedUser);
     }
 
+    await syncCurrentUserFromServer();
     checkAuth();
     initAllPageCustomSelects();
     initAllFilterComboboxes();

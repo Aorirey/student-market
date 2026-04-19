@@ -375,6 +375,160 @@ header {
     transform: translateY(-1px);
 }
 
+.btn-support-header,
+.btn-moderator {
+    background: var(--bg-surface);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    padding: 0.45rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.btn-support-header:hover,
+.btn-moderator:hover {
+    background: var(--bg-surface-hover);
+    border-color: var(--border-hover);
+}
+
+.btn-moderator {
+    background: rgba(125, 132, 143, 0.18);
+    color: var(--primary-light);
+}
+
+.modal-content--wide {
+    max-width: 520px;
+    width: 92vw;
+}
+
+/* Подпись над полем: иначе <label> (inline) и input/textarea сидят в одной строке */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-xs);
+    width: 100%;
+}
+
+.form-group > label {
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+/* Техподдержка: единые отступы и полная ширина полей */
+#support-modal .modal-content--wide {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+#support-modal .modal-content--wide > .modal-close {
+    flex-shrink: 0;
+}
+
+#support-modal #support-modal-title {
+    margin: 0 0 var(--space-xs) 0;
+    padding-right: 2.25rem;
+    line-height: 1.25;
+}
+
+.support-modal__hint {
+    margin: 0 0 var(--space-lg) 0;
+}
+
+.support-ticket-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    width: 100%;
+}
+
+.support-ticket-form .form-group {
+    margin: 0;
+}
+
+.support-ticket-form .form-input,
+.support-ticket-form .ui-custom-select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.support-ticket-form input.form-input,
+.support-ticket-form textarea.form-input {
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    font-family: inherit;
+    background: var(--bg-surface);
+    color: var(--text-main);
+    min-height: 2.75rem;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.support-ticket-form textarea.form-input {
+    min-height: 7.5rem;
+    resize: vertical;
+    line-height: 1.45;
+}
+
+.support-ticket-form input.form-input:focus,
+.support-ticket-form textarea.form-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.support-ticket-form .ui-custom-select__trigger {
+    min-height: 2.75rem;
+    padding: 0.65rem 0.85rem;
+    font-size: var(--fs-sm);
+}
+
+.support-ticket-form > .btn-signup {
+    width: 100%;
+    margin-top: var(--space-sm);
+    box-sizing: border-box;
+}
+
+.support-modal__my-section {
+    margin-top: var(--space-xl);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border);
+}
+
+.support-modal__my-title {
+    font-size: var(--fs-md);
+    margin: 0 0 var(--space-md) 0;
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.support-my-tickets {
+    max-height: 220px;
+    overflow-y: auto;
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
+}
+
+.support-my-tickets .support-ticket-row {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-panel--moderator .admin-tab--admin-only,
+.admin-panel--moderator .admin-section--admin-only {
+    display: none !important;
+}
+
+.admin-panel--moderator #admin-chats.admin-section.active,
+.admin-panel--moderator #admin-users.admin-section.active,
+.admin-panel--moderator #admin-support.admin-section.active {
+    display: block;
+}
+
 .btn-logout {
     color: var(--danger);
     background: rgba(248, 113, 113, 0.08);
@@ -1017,7 +1171,7 @@ select:not(.ui-custom-select__native):disabled {
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    padding: var(--space-xl);
+    padding: var(--space-md) var(--space-xl) var(--space-xl);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
@@ -1547,12 +1701,159 @@ select:not(.ui-custom-select__native):disabled {
 .user-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: var(--space-md);
     padding: var(--space-md);
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     transition: all var(--transition-fast);
+}
+
+.pending-product-item .admin-actions,
+.admin-product-item .admin-actions {
+    align-self: center;
+    flex-shrink: 0;
+}
+
+.admin-product-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.15rem;
+}
+
+.admin-product-detail-line {
+    display: block;
+    line-height: 1.45;
+}
+
+.admin-chats-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr);
+    gap: var(--space-lg);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .admin-chats-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-chats-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.admin-chats-refresh {
+    align-self: flex-start;
+}
+
+.admin-chats-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    max-height: min(70vh, 520px);
+    overflow-y: auto;
+}
+
+.admin-chat-conv-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    text-align: left;
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    font: inherit;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.admin-chat-conv-item:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-surface-hover);
+}
+
+.admin-chat-conv-item.is-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--accent-glow);
+}
+
+.admin-chat-conv-item__title {
+    font-weight: 600;
+    font-size: var(--fs-sm);
+}
+
+.admin-chat-conv-item__meta {
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+}
+
+.admin-chat-conv-item__preview {
+    font-size: var(--fs-xs);
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.admin-chats-main {
+    min-width: 0;
+}
+
+.admin-chats-thread-head {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: var(--space-sm);
+    line-height: 1.4;
+}
+
+.admin-chats-thread {
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    padding: var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+}
+
+.admin-chat-msg {
+    margin-bottom: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+}
+
+.admin-chat-msg-sender {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--primary);
+    margin-bottom: 0.25rem;
+}
+
+.admin-chat-msg-text {
+    font-size: var(--fs-sm);
+    color: var(--text-main);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.admin-chat-msg-file {
+    margin-top: var(--space-xs);
+    font-size: var(--fs-xs);
+}
+
+.admin-chat-msg-meta {
+    margin-top: 0.35rem;
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
 }
 
 .pending-product-item:hover,
@@ -1697,6 +1998,14 @@ select:not(.ui-custom-select__native):disabled {
 .seller-rating {
     font-size: var(--fs-sm);
     color: var(--text-secondary);
+}
+
+.seller-page-header .seller-joined {
+    flex-basis: 100%;
+    width: 100%;
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
 }
 
 .seller-page-content {
@@ -2533,6 +2842,27 @@ footer p {
 .chat-message-file a {
     color: inherit;
     text-decoration: underline;
+}
+
+.chat-file-preview-img {
+    display: block;
+    max-width: min(100%, 280px);
+    max-height: 320px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    margin: 0.25rem 0;
+}
+
+.chat-file-download-link {
+    display: inline-block;
+    margin-top: 0.15rem;
+    font-size: var(--fs-xs);
+}
+
+.admin-chat-msg-file .chat-file-preview-img {
+    max-width: min(100%, 360px);
 }
 
 .chat-input-area {
@@ -3373,4 +3703,50 @@ textarea#custom-description:focus {
 label {
     color: var(--text-secondary);
     font-size: var(--fs-sm);
+}
+
+.chat-header-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.chat-purchase-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.chat-purchase-actions .btn-confirm-order {
+    font-size: var(--fs-xs);
+    padding: 0.4rem 0.75rem;
+}
+
+.wallet-topup-row,
+.wallet-withdraw-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.wallet-topup-row input,
+.wallet-withdraw-row input {
+    flex: 1;
+    min-width: 140px;
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    font-size: var(--fs-sm);
+}
+
+.wallet-buyer-block,
+.wallet-seller-block {
+    margin-bottom: 1rem;
 }
