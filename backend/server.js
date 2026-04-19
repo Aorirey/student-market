@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
-const { authenticateToken, optionalAuthenticateToken, requireAdmin, requireStaff, requirePurchaseParticipant, setUserStaffFlagsLoader } = require('./auth');
+const { authenticateToken, optionalAuthenticateToken, requireStaff, requirePurchaseParticipant, setUserStaffFlagsLoader, isStaffUser } = require('./auth');
 const telegram = require('./telegram');
 
 const app = express();
@@ -448,9 +448,8 @@ if (dbMode === 'postgres') {
             const row = result[0].values[0];
             const photoUrl = row[8] ? sanitizeHTML(row[8]) : null;
             const isSelf = req.user && req.user.id === req.params.id;
-            const isAdmin = req.user && req.user.isAdmin;
 
-            if (isSelf || isAdmin) {
+            if (isSelf || isStaffUser(req)) {
                 return res.json({
                     id: sanitizeHTML(row[0]),
                     name: sanitizeHTML(row[1]),
@@ -686,8 +685,8 @@ if (dbMode === 'postgres') {
         }
     });
 
-    // БЕЗОПАСНОСТЬ: Изменение баланса — только для администраторов
-    app.patch('/api/users/:id/balance', authenticateToken, requireAdmin, userIdValidator, (req, res) => {
+    // БЕЗОПАСНОСТЬ: Изменение баланса — администратор или модератор
+    app.patch('/api/users/:id/balance', authenticateToken, requireStaff, userIdValidator, (req, res) => {
         try {
             const { balance } = req.body;
 
@@ -721,7 +720,7 @@ if (dbMode === 'postgres') {
         }
     });
 
-    // Блокировка пользователей — администратор или модератор (модератор не трогает админов и модераторов)
+    // Блокировка пользователей — staff; модератор не может блокировать администратора (админ может)
     app.patch('/api/users/:id/block', authenticateToken, requireStaff, userIdValidator, (req, res) => {
         try {
             const { isBlocked } = req.body;
@@ -734,12 +733,9 @@ if (dbMode === 'postgres') {
             if (!target.length || !target[0].values.length) {
                 return res.status(404).json({ error: 'Пользователь не найден' });
             }
-            const [tAdmin, tMod] = target[0].values[0];
-            if (Boolean(tAdmin)) {
-                return res.status(403).json({ error: 'Нельзя блокировать администратора' });
-            }
-            if (Boolean(tMod) && !req.user.isAdmin) {
-                return res.status(403).json({ error: 'Блокировать модератора может только администратор' });
+            const [tAdmin] = target[0].values[0];
+            if (Boolean(tAdmin) && !req.user.isAdmin) {
+                return res.status(403).json({ error: 'Блокировать администратора может только администратор' });
             }
 
             db.run("UPDATE users SET isBlocked = ? WHERE id = ?", [isBlocked ? 1 : 0, req.params.id]);
@@ -767,7 +763,7 @@ if (dbMode === 'postgres') {
         }
     });
 
-    app.patch('/api/users/:id/moderator', authenticateToken, requireAdmin, userIdValidator, (req, res) => {
+    app.patch('/api/users/:id/moderator', authenticateToken, requireStaff, userIdValidator, (req, res) => {
         try {
             const { isModerator } = req.body;
             if (typeof isModerator !== 'boolean') {
@@ -801,7 +797,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Удаление пользователей — только для администраторов
-    app.delete('/api/users/:id', authenticateToken, requireAdmin, userIdValidator, (req, res) => {
+    app.delete('/api/users/:id', authenticateToken, requireStaff, userIdValidator, (req, res) => {
         try {
             const userResult = db.exec("SELECT isAdmin FROM users WHERE id = ?", [req.params.id]);
             if (userResult.length > 0 && userResult[0].values.length > 0 && userResult[0].values[0][0] === 1) {
@@ -828,7 +824,7 @@ if (dbMode === 'postgres') {
     app.patch('/api/users/:id', authenticateToken, userIdValidator, ...profileUpdateValidator, (req, res) => {
         try {
             // Проверяем, что пользователь обновляет свой профиль или это админ
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
+            if (req.user.id !== req.params.id && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете обновлять только свой профиль' });
             }
 
@@ -1287,7 +1283,7 @@ if (dbMode === 'postgres') {
     });
 
     // Должен быть выше /api/products/:id, иначе сегмент «all» попадает в :id и валидация ломает админку.
-    app.get('/api/products/all', authenticateToken, requireAdmin, (req, res) => {
+    app.get('/api/products/all', authenticateToken, requireStaff, (req, res) => {
         try {
             const result = db.exec("SELECT * FROM products");
             res.json(result.length > 0 ? result[0].values.map(row => ({
@@ -1346,7 +1342,7 @@ if (dbMode === 'postgres') {
     app.get('/api/users/:id/products', authenticateToken, userIdValidator, (req, res) => {
         try {
             // Разрешаем пользователю смотреть свои товары, админу — любые
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
+            if (req.user.id !== req.params.id && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои товары' });
             }
             const result = db.exec("SELECT * FROM products WHERE sellerId = ?", [req.params.id]);
@@ -1375,7 +1371,7 @@ if (dbMode === 'postgres') {
             const { title, university, teacher, category, discipline, price, sellerId, sellerName, deadline } = req.body;
 
             // Проверяем, что авторизованный пользователь — это продавец
-            if (req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== sellerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать товары только от своего имени' });
             }
 
@@ -1413,7 +1409,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Одобрение товара — только для администраторов
-    app.patch('/api/products/:id/approve', authenticateToken, requireAdmin, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
+    app.patch('/api/products/:id/approve', authenticateToken, requireStaff, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
         try {
             // Получаем sellerId до обновления
             const productResult = db.exec("SELECT sellerId, title FROM products WHERE id = ?", [req.params.id]);
@@ -1435,7 +1431,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Отклонение товара — только для администраторов
-    app.patch('/api/products/:id/reject', authenticateToken, requireAdmin, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
+    app.patch('/api/products/:id/reject', authenticateToken, requireStaff, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
         try {
             const productResult = db.exec("SELECT sellerId, title FROM products WHERE id = ?", [req.params.id]);
             db.run("UPDATE products SET status = 'rejected' WHERE id = ?", [req.params.id]);
@@ -1468,7 +1464,7 @@ if (dbMode === 'postgres') {
             const sellerId = productResult[0].values[0][0];
 
             // Проверяем права: владелец или админ
-            if (req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== sellerId && !isStaffUser(req)) {
                 console.log(`[AUTH] Попытка удаления чужого товара: пользователь ${req.user.id}, товар ${req.params.id}, владелец ${sellerId}`);
                 return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого товара' });
             }
@@ -1506,12 +1502,12 @@ if (dbMode === 'postgres') {
             const sellerId = productResult[0].values[0][0];
 
             // Проверяем права: владелец или админ
-            if (req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== sellerId && !isStaffUser(req)) {
                 console.log(`[AUTH] Попытка редактирования чужого товара: пользователь ${req.user.id}, товар ${req.params.id}, владелец ${sellerId}`);
                 return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого товара' });
             }
 
-            if (req.user.id === sellerId && !req.user.isAdmin) {
+            if (req.user.id === sellerId && !isStaffUser(req)) {
                 const sellerBlock = db.exec('SELECT isBlocked FROM users WHERE id = ?', [sellerId]);
                 if (sellerBlock.length && sellerBlock[0].values.length && Boolean(sellerBlock[0].values[0][0])) {
                     return res.status(403).json({ error: 'Аккаунт ограничен: вы не можете редактировать товары.' });
@@ -1578,7 +1574,7 @@ if (dbMode === 'postgres') {
     app.get('/api/users/:id/products/pending', authenticateToken, userIdValidator, (req, res) => {
         try {
             // Разрешаем пользователю смотреть свои pending товары, админу — любые
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
+            if (req.user.id !== req.params.id && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои товары на модерации' });
             }
 
@@ -1803,7 +1799,7 @@ if (dbMode === 'postgres') {
             const row = result[0].values[0];
 
             // Проверяем, что пользователь — участник покупки или админ
-            if (req.user.id !== row[4] && req.user.id !== row[5] && !req.user.isAdmin) {
+            if (req.user.id !== row[4] && req.user.id !== row[5] && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
 
@@ -1840,7 +1836,7 @@ if (dbMode === 'postgres') {
             }
             const [buyerId, sellerId, status, fileAttached, buyerConfirmedAt, price, title] = result[0].values[0];
 
-            if (req.user.id !== buyerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Подтвердить выполнение может только покупатель' });
             }
             if (status !== 'active') {
@@ -1887,8 +1883,8 @@ if (dbMode === 'postgres') {
             const fileAttached = row[1];
             const status = row[2];
 
-            // Удалить может: админ, или покупатель (если файл ещё не прикреплён и статус active)
-            if (req.user.isAdmin) {
+            // Удалить может: staff, или покупатель (если файл ещё не прикреплён и статус active)
+            if (isStaffUser(req)) {
                 // Админ: возврат покупателю из эскроу (продавец не получал средства на баланс)
                 const purchasePrice = db.exec("SELECT price, buyerId, sellerId FROM purchases WHERE id = ?", [req.params.id])[0].values[0];
                 const [price, bId] = purchasePrice;
@@ -1956,17 +1952,17 @@ if (dbMode === 'postgres') {
 
             // Сменить статус может: админ, продавец (cancelled/disputed), покупатель (cancelled)
             const isParticipant = req.user.id === buyerId || req.user.id === sellerId;
-            if (!req.user.isAdmin && !isParticipant) {
+            if (!isStaffUser(req) && !isParticipant) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
 
             // Завершение сделки — только через POST .../confirm-completion (покупатель)
-            if (newStatus === 'completed' && !req.user.isAdmin) {
+            if (newStatus === 'completed' && !isStaffUser(req)) {
                 return res.status(400).json({ error: 'Подтвердите выполнение заказа кнопкой в разделе «Покупатель» или в чате' });
             }
 
             // Покупатель может только отменить
-            if (req.user.id === buyerId && !req.user.isAdmin && newStatus !== 'cancelled') {
+            if (req.user.id === buyerId && !isStaffUser(req) && newStatus !== 'cancelled') {
                 return res.status(403).json({ error: 'Покупатель может только отменить покупку' });
             }
 
@@ -2212,7 +2208,7 @@ if (dbMode === 'postgres') {
             const [buyerId, sellerId] = purchaseCheck[0].values[0];
 
             // Загрузить файл может только участник покупки (обычно продавец)
-            if (req.user.id !== buyerId && req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
 
@@ -2259,7 +2255,7 @@ if (dbMode === 'postgres') {
             }
 
             const [buyerId, sellerId] = purchaseCheck[0].values[0];
-            if (req.user.id !== buyerId && req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
 
@@ -2290,7 +2286,7 @@ if (dbMode === 'postgres') {
             }
 
             const [buyerId, sellerId] = purchaseCheck[0].values[0];
-            if (req.user.id !== buyerId && req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
 
@@ -2322,7 +2318,7 @@ if (dbMode === 'postgres') {
             }
 
             const [buyerId, sellerId] = purchaseCheck[0].values[0];
-            if (req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== sellerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только продавец или админ может удалить файл' });
             }
 
@@ -2354,7 +2350,7 @@ if (dbMode === 'postgres') {
             }
 
             const requesterId = reqCheck[0].values[0][0];
-            if (req.user.id !== requesterId && !req.user.isAdmin) {
+            if (req.user.id !== requesterId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только автор запроса может загрузить файл' });
             }
 
@@ -2425,7 +2421,7 @@ if (dbMode === 'postgres') {
     // GET /api/users/:buyerId/reviews — отзывы, оставленные конкретным покупателем
     app.get('/api/users/:buyerId/reviews-given', authenticateToken, userIdValidator, (req, res) => {
         try {
-            if (req.user.id !== req.params.buyerId && !req.user.isAdmin) {
+            if (req.user.id !== req.params.buyerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои отзывы' });
             }
 
@@ -2542,7 +2538,7 @@ if (dbMode === 'postgres') {
             const { purchaseId, buyerId, sellerId, rating, comment } = req.body;
 
             // Проверяем, что авторизованный пользователь — это покупатель
-            if (req.user.id !== buyerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете оставлять отзывы только от своего имени' });
             }
 
@@ -2623,7 +2619,7 @@ if (dbMode === 'postgres') {
             const currentComment = row[3];
 
             // Редактировать может: автор (покупатель) или админ
-            if (req.user.id !== buyerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только автор может редактировать отзыв' });
             }
 
@@ -2662,7 +2658,7 @@ if (dbMode === 'postgres') {
             const sellerId = row[1];
 
             // Удалить может: автор (покупатель) или админ
-            if (req.user.id !== buyerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только автор или админ может удалить отзыв' });
             }
 
@@ -2712,7 +2708,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Просмотр всех индивидуальных запросов — только для администраторов
-    app.get('/api/custom-requests/all', authenticateToken, requireAdmin, (req, res) => {
+    app.get('/api/custom-requests/all', authenticateToken, requireStaff, (req, res) => {
         try {
             const result = db.exec("SELECT * FROM custom_requests");
             res.json(result.length > 0 ? result[0].values.map(row => ({
@@ -2741,7 +2737,7 @@ if (dbMode === 'postgres') {
             const { title, university, teacher, description, budget, deadline, requesterId, requesterName, fileName, fileData } = req.body;
 
             // Проверяем, что авторизованный пользователь — это заказчик
-            if (req.user.id !== requesterId && !req.user.isAdmin) {
+            if (req.user.id !== requesterId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать запросы только от своего имени' });
             }
 
@@ -2774,7 +2770,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Одобрение индивидуального запроса — только для администраторов
-    app.patch('/api/custom-requests/:id/approve', authenticateToken, requireAdmin, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
+    app.patch('/api/custom-requests/:id/approve', authenticateToken, requireStaff, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
         try {
             db.run("UPDATE custom_requests SET status = 'approved' WHERE id = ?", [req.params.id]);
             saveDatabase();
@@ -2787,7 +2783,7 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Отклонение индивидуального запроса — только для администраторов
-    app.patch('/api/custom-requests/:id/reject', authenticateToken, requireAdmin, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
+    app.patch('/api/custom-requests/:id/reject', authenticateToken, requireStaff, [param('id').notEmpty().isInt().withMessage('Некорректный ID'), validate], (req, res) => {
         try {
             db.run("UPDATE custom_requests SET status = 'rejected' WHERE id = ?", [req.params.id]);
             saveDatabase();
@@ -2804,7 +2800,7 @@ if (dbMode === 'postgres') {
             const reqCheck = db.exec("SELECT requesterId FROM custom_requests WHERE id = ?", [req.params.id]);
             if (reqCheck.length > 0 && reqCheck[0].values.length > 0) {
                 const requesterId = reqCheck[0].values[0][0];
-                if (req.user.id !== requesterId && !req.user.isAdmin) {
+                if (req.user.id !== requesterId && !isStaffUser(req)) {
                     return res.status(403).json({ error: 'Доступ запрещён: только автор запроса или админ может удалить' });
                 }
             }
@@ -2860,7 +2856,7 @@ if (dbMode === 'postgres') {
             }
 
             const requesterId = reqCheck[0].values[0][0];
-            if (req.user.id !== requesterId && !req.user.isAdmin) {
+            if (req.user.id !== requesterId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только автор запроса может редактировать' });
             }
 
@@ -3288,7 +3284,7 @@ if (dbMode === 'postgres') {
             const senderId = result[0].values[0][0];
 
             // Удалить может: автор или админ
-            if (req.user.id !== senderId && !req.user.isAdmin) {
+            if (req.user.id !== senderId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: только автор или админ может удалить сообщение' });
             }
 
@@ -3448,8 +3444,8 @@ if (dbMode === 'postgres') {
         }
     });
 
-    // POST /api/notifications — создание (только админ)
-    app.post('/api/notifications', authenticateToken, requireAdmin, [
+    // POST /api/notifications — создание (staff)
+    app.post('/api/notifications', authenticateToken, requireStaff, [
         body('userId').trim().notEmpty().withMessage('ID пользователя обязателен'),
         body('title').trim().notEmpty().withMessage('Заголовок обязателен').isLength({ max: 200 }),
         body('message').trim().notEmpty().withMessage('Сообщение обязательно').isLength({ max: 1000 }),
@@ -3486,7 +3482,7 @@ if (dbMode === 'postgres') {
             }
 
             const userId = notifResult[0].values[0][0];
-            if (req.user.id !== userId && !req.user.isAdmin) {
+            if (req.user.id !== userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого уведомления' });
             }
 
@@ -3508,7 +3504,7 @@ if (dbMode === 'postgres') {
             }
 
             const userId = notifResult[0].values[0][0];
-            if (req.user.id !== userId && !req.user.isAdmin) {
+            if (req.user.id !== userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -3547,7 +3543,7 @@ if (dbMode === 'postgres') {
             }
 
             const userId = notifResult[0].values[0][0];
-            if (req.user.id !== userId && !req.user.isAdmin) {
+            if (req.user.id !== userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -3564,7 +3560,7 @@ if (dbMode === 'postgres') {
     // АДМИН-ПАНЕЛЬ: Статистика
     // ============================================
 
-    app.get('/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
+    app.get('/api/admin/stats', authenticateToken, requireStaff, (req, res) => {
         try {
             const usersCount = db.exec("SELECT COUNT(*) FROM users")[0]?.values[0]?.[0] || 0;
             const productsCount = db.exec("SELECT COUNT(*) FROM products")[0]?.values[0]?.[0] || 0;
@@ -3592,7 +3588,7 @@ if (dbMode === 'postgres') {
     });
 
     // Массовое управление статусами товаров (одобрить/отклонить несколько)
-    app.patch('/api/admin/products/bulk-update', authenticateToken, requireAdmin, [
+    app.patch('/api/admin/products/bulk-update', authenticateToken, requireStaff, [
         body('ids').isArray({ min: 1 }).withMessage('Массив ID обязателен'),
         body('status').isIn(['approved', 'rejected', 'pending']).withMessage('Некорректный статус'),
         validate
@@ -3790,7 +3786,7 @@ if (dbMode === 'postgres') {
     // GET /api/analytics/user/:userId — персональная аналитика пользователя
     app.get('/api/analytics/user/:userId', authenticateToken, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            if (req.user.id !== req.params.userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -4059,7 +4055,7 @@ if (dbMode === 'postgres') {
     // GET /api/telegram/status/:userId — проверить статус подписки пользователя
     app.get('/api/telegram/status/:userId', authenticateToken, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            if (req.user.id !== req.params.userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -4078,7 +4074,7 @@ if (dbMode === 'postgres') {
     // POST /api/telegram/unsubscribe/:userId — отписаться (для фронтенда)
     app.post('/api/telegram/unsubscribe/:userId', authenticateToken, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            if (req.user.id !== req.params.userId && !isStaffUser(req)) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -4095,7 +4091,7 @@ if (dbMode === 'postgres') {
     });
 
     // POST /api/telegram/test — тестовое сообщение (только админ)
-    app.post('/api/telegram/test', authenticateToken, requireAdmin, (req, res) => {
+    app.post('/api/telegram/test', authenticateToken, requireStaff, (req, res) => {
         try {
             const { chatId, message } = req.body;
 

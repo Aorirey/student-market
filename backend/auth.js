@@ -14,6 +14,11 @@ function applyJwtRoleBooleans(user) {
     return user;
 }
 
+/** Администратор или модератор (обход проверок владельца в API панели) */
+function isStaffUser(req) {
+    return !!(req.user && (req.user.isAdmin || req.user.isModerator));
+}
+
 /**
  * Middleware для проверки JWT токена
  * Извлекает токен из заголовка Authorization: Bearer <token>
@@ -127,7 +132,7 @@ function requireOwnership(idField, getResourceOwner) {
             return res.status(404).json({ error: 'Ресурс не найден' });
         }
         
-        if (req.user.id !== ownerId && !req.user.isAdmin) {
+        if (req.user.id !== ownerId && !isStaffUser(req)) {
             console.log(`[AUTH] Попытка доступа к чужому ресурсу: пользователь ${req.user.id}, ресурс ${resourceId}, владелец ${ownerId}`);
             return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого ресурса' });
         }
@@ -157,7 +162,7 @@ function requirePurchaseParticipant(db) {
             
             const [buyerId, sellerId] = result[0].values[0];
             
-            if (req.user.id !== buyerId && req.user.id !== sellerId && !req.user.isAdmin) {
+            if (req.user.id !== buyerId && req.user.id !== sellerId && !isStaffUser(req)) {
                 console.log(`[AUTH] Попытка доступа к чужой покупке: пользователь ${req.user.id}, покупка ${purchaseId}`);
                 return res.status(403).json({ error: 'Доступ запрещён: вы не участник этой покупки' });
             }
@@ -177,5 +182,6 @@ module.exports = {
     requireStaff,
     requireOwnership,
     requirePurchaseParticipant,
-    setUserStaffFlagsLoader
+    setUserStaffFlagsLoader,
+    isStaffUser
 };

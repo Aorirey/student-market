@@ -790,8 +790,8 @@
             <div class="admin-header">
                 <h2 id="admin-panel-title">🛡️ Панель администратора</h2>
                 <div class="admin-tabs" role="tablist" aria-label="Разделы админ-панели">
-                    <button class="admin-tab admin-tab--admin-only active" data-admin-tab="moderation" role="tab" aria-selected="true">Модерация товаров</button>
-                    <button class="admin-tab admin-tab--admin-only" data-admin-tab="custom" role="tab" aria-selected="false">Индивид. запросы</button>
+                    <button class="admin-tab active" data-admin-tab="moderation" role="tab" aria-selected="true">Модерация товаров</button>
+                    <button class="admin-tab" data-admin-tab="custom" role="tab" aria-selected="false">Индивид. запросы</button>
                     <button class="admin-tab" data-admin-tab="users" role="tab" aria-selected="false">Пользователи</button>
                     <button class="admin-tab" data-admin-tab="chats" role="tab" aria-selected="false">Переписки</button>
                     <button class="admin-tab" data-admin-tab="support" role="tab" aria-selected="false">Техподдержка</button>
@@ -799,7 +799,7 @@
             </div>
 
             <!-- Модерация товаров -->
-            <div id="admin-moderation" class="admin-section admin-section--admin-only active" role="tabpanel">
+            <div id="admin-moderation" class="admin-section active" role="tabpanel">
                 <div class="admin-info">
                     <h3>📋 Товары на проверке</h3>
                     <div class="pending-products-list" id="pending-products-list" aria-live="polite"></div>
@@ -811,7 +811,7 @@
             </div>
 
             <!-- Модерация индивидуальных запросов -->
-            <div id="admin-custom" class="admin-section admin-section--admin-only" role="tabpanel">
+            <div id="admin-custom" class="admin-section" role="tabpanel">
                 <div class="admin-info">
                     <h3>📋 Запросы на проверке</h3>
                     <div class="pending-requests-list" id="pending-requests-list" aria-live="polite"></div>

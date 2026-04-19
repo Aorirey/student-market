@@ -1266,23 +1266,16 @@ function openAdminPanel() {
 
     const adminPanel = document.getElementById('admin-panel');
     const titleEl = document.getElementById('admin-panel-title');
-    const isOnlyMod = currentUser && currentUser.isModerator && !currentUser.isAdmin;
-    adminPanel.classList.toggle('admin-panel--moderator', Boolean(isOnlyMod));
+    const isModNotAdmin = currentUser && currentUser.isModerator && !currentUser.isAdmin;
+    adminPanel.classList.remove('admin-panel--moderator');
     if (titleEl) {
-        titleEl.textContent = isOnlyMod ? '🛡️ Панель модератора' : '🛡️ Панель администратора';
+        titleEl.textContent = isModNotAdmin ? '🛡️ Панель модератора' : '🛡️ Панель администратора';
     }
 
-    if (isOnlyMod) {
-        const chatsSection = document.getElementById('admin-chats');
-        const chatsTab = document.querySelector('[data-admin-tab="chats"]');
-        if (chatsSection) chatsSection.classList.add('active');
-        if (chatsTab) chatsTab.classList.add('active');
-    } else {
-        const modSection = document.getElementById('admin-moderation');
-        const modTab = document.querySelector('[data-admin-tab="moderation"]');
-        if (modSection) modSection.classList.add('active');
-        if (modTab) modTab.classList.add('active');
-    }
+    const modSection = document.getElementById('admin-moderation');
+    const modTab = document.querySelector('[data-admin-tab="moderation"]');
+    if (modSection) modSection.classList.add('active');
+    if (modTab) modTab.classList.add('active');
 
     stopAdminChatMessagesPoll(true);
     const admMsg = document.getElementById('admin-chats-messages');
@@ -1291,9 +1284,6 @@ function openAdminPanel() {
     if (admHead) admHead.textContent = '';
     adminPanel.classList.add('active');
     loadAdminData();
-    if (isOnlyMod) {
-        loadAdminChatConversations();
-    }
 }
 
 function switchCabinetTab(type) {
@@ -2620,7 +2610,6 @@ async function loadAdminData() {
     if (!currentUser || !isStaffUser()) return;
 
     try {
-        if (currentUser.isAdmin) {
         // Загружаем ВСЕ товары (включая pending)
         const productsResponse = await fetch(`${API_URL}/products/all`, { headers: authBearerHeaders() });
         const products = await productsResponse.json();
@@ -2815,7 +2804,6 @@ async function loadAdminData() {
                 approvedRequestsList.appendChild(item);
             });
         }
-        }
 
         // Загружаем пользователей
         const usersResponse = await fetch(`${API_URL}/users`, { headers: authBearerHeaders() });
@@ -2857,8 +2845,6 @@ async function loadAdminData() {
                 statusSpan.className = `user-status ${statusClass}`;
                 statusSpan.textContent = statusText;
 
-                const modOnly = currentUser.isModerator && !currentUser.isAdmin;
-
                 const actionBtn = document.createElement('button');
                 if (user.isBlocked) {
                     actionBtn.className = 'btn-unblock';
@@ -2871,16 +2857,9 @@ async function loadAdminData() {
                 }
 
                 actionsDiv.appendChild(statusSpan);
-                if (modOnly && user.isModerator) {
-                    const hint = document.createElement('span');
-                    hint.className = 'form-hint';
-                    hint.textContent = 'Модератор';
-                    actionsDiv.appendChild(hint);
-                } else {
-                    actionsDiv.appendChild(actionBtn);
-                }
+                actionsDiv.appendChild(actionBtn);
 
-                if (currentUser.isAdmin) {
+                if (isStaffUser()) {
                     const modBtn = document.createElement('button');
                     modBtn.className = user.isModerator ? 'btn-reject' : 'btn-approve';
                     modBtn.textContent = user.isModerator ? 'Снять модератора' : 'Сделать модератором';

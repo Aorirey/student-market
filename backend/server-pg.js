@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
-const { optionalAuthenticateToken, authenticateToken, requireAdmin, requireStaff, setUserStaffFlagsLoader } = require('./auth');
+const { optionalAuthenticateToken, authenticateToken, requireStaff, setUserStaffFlagsLoader, isStaffUser } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -460,10 +460,9 @@ app.get('/api/users/:id', optionalAuthenticateToken, userIdValidator, async (req
         if (result.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
         const row = result.rows[0];
         const isSelf = req.user && req.user.id === req.params.id;
-        const isAdmin = req.user && req.user.isAdmin;
         const photoUrl = row.photo_url ? sanitizeHTML(row.photo_url) : null;
 
-        if (isSelf || isAdmin) {
+        if (isSelf || isStaffUser(req)) {
             return res.json({
                 id: sanitizeHTML(row.id),
                 name: sanitizeHTML(row.name),
@@ -564,7 +563,7 @@ app.post('/api/users/login', loginValidator, async (req, res) => {
     }
 });
 
-app.patch('/api/users/:id/balance', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
+app.patch('/api/users/:id/balance', authenticateToken, requireStaff, userIdValidator, async (req, res) => {
     try {
         const { balance } = req.body;
         if (typeof balance !== 'number' || balance < 0 || balance > 10000000) {
@@ -599,9 +598,8 @@ app.patch('/api/users/:id/block', authenticateToken, requireStaff, userIdValidat
         const target = await pool.query('SELECT is_admin, is_moderator FROM users WHERE id = $1', [req.params.id]);
         if (target.rows.length === 0) return res.status(404).json({ error: 'Пользователь не найден' });
         const t = target.rows[0];
-        if (t.is_admin) return res.status(403).json({ error: 'Нельзя блокировать администратора' });
-        if (t.is_moderator && !req.user.isAdmin) {
-            return res.status(403).json({ error: 'Блокировать модератора может только администратор' });
+        if (t.is_admin && !req.user.isAdmin) {
+            return res.status(403).json({ error: 'Блокировать администратора может только администратор' });
         }
         await pool.query('UPDATE users SET is_blocked = $1 WHERE id = $2', [isBlocked, req.params.id]);
         const result = await pool.query(
@@ -624,7 +622,7 @@ app.patch('/api/users/:id/block', authenticateToken, requireStaff, userIdValidat
     }
 });
 
-app.patch('/api/users/:id/moderator', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
+app.patch('/api/users/:id/moderator', authenticateToken, requireStaff, userIdValidator, async (req, res) => {
     try {
         const { isModerator } = req.body;
         if (typeof isModerator !== 'boolean') return res.status(400).json({ error: 'Некорректное значение isModerator' });
@@ -652,7 +650,7 @@ app.patch('/api/users/:id/moderator', authenticateToken, requireAdmin, userIdVal
     }
 });
 
-app.delete('/api/users/:id', authenticateToken, requireAdmin, userIdValidator, async (req, res) => {
+app.delete('/api/users/:id', authenticateToken, requireStaff, userIdValidator, async (req, res) => {
     try {
         const userResult = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.params.id]);
         if (userResult.rows.length > 0 && userResult.rows[0].is_admin) return res.status(403).json({ error: 'Нельзя удалить админа' });
@@ -1013,7 +1011,7 @@ app.get('/api/products', async (req, res) => {
     }
 });
 
-app.get('/api/products/all', async (req, res) => {
+app.get('/api/products/all', authenticateToken, requireStaff, async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM products");
         res.json(result.rows.map(row => ({
@@ -1031,7 +1029,7 @@ app.get('/api/products/all', async (req, res) => {
 
 app.get('/api/users/:id/products', authenticateToken, userIdValidator, async (req, res) => {
     try {
-        if (req.user.id !== req.params.id && !req.user.isAdmin) {
+        if (req.user.id !== req.params.id && !isStaffUser(req)) {
             return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои товары' });
         }
         const result = await pool.query("SELECT * FROM products WHERE seller_id = $1", [req.params.id]);
@@ -1051,7 +1049,7 @@ app.get('/api/users/:id/products', authenticateToken, userIdValidator, async (re
 app.post('/api/products', authenticateToken, productCreateValidator, async (req, res) => {
     try {
         const { title, university, teacher, category, discipline, price, sellerId, sellerName, deadline } = req.body;
-        if (req.user.id !== sellerId && !req.user.isAdmin) {
+        if (req.user.id !== sellerId && !isStaffUser(req)) {
             return res.status(403).json({ error: 'Доступ запрещён: вы можете создавать товары только от своего имени' });
         }
         const blockRow = await pool.query('SELECT is_blocked FROM users WHERE id = $1', [sellerId]);
@@ -1083,7 +1081,7 @@ app.post('/api/products', authenticateToken, productCreateValidator, async (req,
     }
 });
 
-app.patch('/api/products/:id/approve', authenticateToken, requireAdmin, [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/products/:id/approve', authenticateToken, requireStaff, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE products SET status = 'approved' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Одобрен товар: ${req.params.id}`);
@@ -1094,7 +1092,7 @@ app.patch('/api/products/:id/approve', authenticateToken, requireAdmin, [param('
     }
 });
 
-app.patch('/api/products/:id/reject', authenticateToken, requireAdmin, [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/products/:id/reject', authenticateToken, requireStaff, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE products SET status = 'rejected' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Отклонён товар: ${req.params.id}`);
@@ -1112,7 +1110,7 @@ app.delete('/api/products/:id', authenticateToken, [param('id').notEmpty().isInt
             return res.status(404).json({ error: 'Товар не найден' });
         }
         const sellerId = productResult.rows[0].seller_id;
-        if (req.user.id !== sellerId && !req.user.isAdmin) {
+        if (req.user.id !== sellerId && !isStaffUser(req)) {
             return res.status(403).json({ error: 'Доступ запрещён: вы не владелец этого товара' });
         }
         await pool.query("DELETE FROM products WHERE id = $1", [req.params.id]); 
@@ -1323,7 +1321,7 @@ app.get('/api/custom-requests', async (req, res) => {
     }
 });
 
-app.get('/api/custom-requests/all', async (req, res) => {
+app.get('/api/custom-requests/all', authenticateToken, requireStaff, async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM custom_requests");
         res.json(result.rows.map(row => ({
@@ -1368,7 +1366,7 @@ app.post('/api/custom-requests', customRequestCreateValidator, async (req, res) 
     }
 });
 
-app.patch('/api/custom-requests/:id/approve', [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/custom-requests/:id/approve', authenticateToken, requireStaff, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE custom_requests SET status = 'approved' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Одобрен запрос: ${req.params.id}`);
@@ -1379,7 +1377,7 @@ app.patch('/api/custom-requests/:id/approve', [param('id').notEmpty().isInt(), v
     }
 });
 
-app.patch('/api/custom-requests/:id/reject', [param('id').notEmpty().isInt(), validate], async (req, res) => {
+app.patch('/api/custom-requests/:id/reject', authenticateToken, requireStaff, [param('id').notEmpty().isInt(), validate], async (req, res) => {
     try { 
         await pool.query("UPDATE custom_requests SET status = 'rejected' WHERE id = $1", [req.params.id]); 
         console.log(`[MODERATION] Отклонён запрос: ${req.params.id}`);
@@ -1719,7 +1717,7 @@ app.get('/api/notifications/:userId', [param('userId').trim().notEmpty().withMes
     }
 });
 
-app.post('/api/notifications', [
+app.post('/api/notifications', authenticateToken, requireStaff, [
     body('userId').trim().notEmpty(),
     body('title').trim().notEmpty().isLength({ max: 200 }),
     body('message').trim().notEmpty().isLength({ max: 1000 }),
@@ -1870,8 +1868,8 @@ app.post('/api/telegram/unsubscribe/:userId', (req, res) => {
     });
 });
 
-// POST /api/telegram/test — тестовое сообщение (только админ)
-app.post('/api/telegram/test', async (req, res) => {
+// POST /api/telegram/test — тестовое сообщение (staff)
+app.post('/api/telegram/test', authenticateToken, requireStaff, async (req, res) => {
     try {
         const { chatId, message } = req.body;
         if (chatId) {
