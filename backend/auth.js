@@ -1,6 +1,19 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./config');
 
+/** (userId) => Promise|sync { isAdmin, isModerator } | null — подставляет актуальные роли из БД поверх JWT */
+let loadUserStaffFlags = null;
+
+function setUserStaffFlagsLoader(fn) {
+    loadUserStaffFlags = typeof fn === 'function' ? fn : null;
+}
+
+function applyJwtRoleBooleans(user) {
+    user.isAdmin = Boolean(user.isAdmin);
+    user.isModerator = Boolean(user.isModerator);
+    return user;
+}
+
 /**
  * Middleware для проверки JWT токена
  * Извлекает токен из заголовка Authorization: Bearer <token>
@@ -15,11 +28,27 @@ function authenticateToken(req, res, next) {
     }
 
     try {
-        const user = jwt.verify(token, JWT_SECRET);
-        user.isAdmin = Boolean(user.isAdmin);
-        user.isModerator = Boolean(user.isModerator);
-        req.user = user;
-        next();
+        const user = applyJwtRoleBooleans(jwt.verify(token, JWT_SECRET));
+
+        if (!loadUserStaffFlags || !user.id) {
+            req.user = user;
+            return next();
+        }
+
+        Promise.resolve(loadUserStaffFlags(user.id))
+            .then((flags) => {
+                if (flags && typeof flags === 'object') {
+                    if ('isAdmin' in flags) user.isAdmin = Boolean(flags.isAdmin);
+                    if ('isModerator' in flags) user.isModerator = Boolean(flags.isModerator);
+                }
+                req.user = user;
+                next();
+            })
+            .catch((err) => {
+                console.error('[AUTH] Ошибка загрузки ролей:', err.message);
+                req.user = user;
+                next();
+            });
     } catch (error) {
         if (error.name === 'TokenExpiredError') {
             return res.status(401).json({ error: 'Токен истёк' });
@@ -37,14 +66,30 @@ function optionalAuthenticateToken(req, res, next) {
         return next();
     }
     try {
-        const user = jwt.verify(token, JWT_SECRET);
-        user.isAdmin = Boolean(user.isAdmin);
-        user.isModerator = Boolean(user.isModerator);
-        req.user = user;
+        const user = applyJwtRoleBooleans(jwt.verify(token, JWT_SECRET));
+
+        if (!loadUserStaffFlags || !user.id) {
+            req.user = user;
+            return next();
+        }
+
+        Promise.resolve(loadUserStaffFlags(user.id))
+            .then((flags) => {
+                if (flags && typeof flags === 'object') {
+                    if ('isAdmin' in flags) user.isAdmin = Boolean(flags.isAdmin);
+                    if ('isModerator' in flags) user.isModerator = Boolean(flags.isModerator);
+                }
+                req.user = user;
+                next();
+            })
+            .catch(() => {
+                req.user = user;
+                next();
+            });
     } catch {
         req.user = null;
+        next();
     }
-    next();
 }
 
 /**
@@ -131,5 +176,6 @@ module.exports = {
     requireAdmin,
     requireStaff,
     requireOwnership,
-    requirePurchaseParticipant
+    requirePurchaseParticipant,
+    setUserStaffFlagsLoader
 };

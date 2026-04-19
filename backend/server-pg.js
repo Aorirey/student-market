@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
-const { optionalAuthenticateToken, authenticateToken, requireAdmin, requireStaff } = require('./auth');
+const { optionalAuthenticateToken, authenticateToken, requireAdmin, requireStaff, setUserStaffFlagsLoader } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -372,6 +372,11 @@ const loginValidator = [
 
 const userIdValidator = [
     param('id').trim().notEmpty().withMessage('ID обязателен'),
+    validate
+];
+
+const paramUserIdValidator = [
+    param('userId').trim().notEmpty().withMessage('userId обязателен'),
     validate
 ];
 
@@ -1123,8 +1128,12 @@ app.delete('/api/products/:id', authenticateToken, [param('id').notEmpty().isInt
 // API: Покупки
 // ============================================
 
-app.get('/api/users/:id/purchases', userIdValidator, async (req, res) => {
+app.get('/api/users/:id/purchases', authenticateToken, userIdValidator, async (req, res) => {
     try {
+        const isStaff = req.user.isAdmin || req.user.isModerator;
+        if (req.user.id !== req.params.id && !isStaff) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои покупки' });
+        }
         const result = await pool.query("SELECT * FROM purchases WHERE buyer_id = $1", [req.params.id]);
         res.json(result.rows.map(row => ({ 
             id: row.id, productId: row.product_id, title: sanitizeHTML(row.title), price: row.price, 
@@ -1137,8 +1146,26 @@ app.get('/api/users/:id/purchases', userIdValidator, async (req, res) => {
     }
 });
 
-app.get('/api/users/:id/sales', userIdValidator, async (req, res) => {
+/** Публичное число продаж (без списка покупок / id чатов) — для профиля продавца. */
+app.get('/api/users/:id/sales-count', userIdValidator, async (req, res) => {
     try {
+        const result = await pool.query(
+            'SELECT COUNT(*)::int AS c FROM purchases WHERE seller_id = $1',
+            [req.params.id]
+        );
+        res.json({ count: result.rows[0] ? result.rows[0].c : 0 });
+    } catch (error) {
+        console.error('Ошибка sales-count:', error.message);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+app.get('/api/users/:id/sales', authenticateToken, userIdValidator, async (req, res) => {
+    try {
+        const isStaff = req.user.isAdmin || req.user.isModerator;
+        if (req.user.id !== req.params.id && !isStaff) {
+            return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои продажи' });
+        }
         console.log(`[SALES] Запрос продаж для seller_id: ${req.params.id}`);
         const result = await pool.query("SELECT * FROM purchases WHERE seller_id = $1", [req.params.id]);
         console.log(`[SALES] Найдено записей: ${result.rows.length}`);
@@ -1618,9 +1645,10 @@ app.post('/api/chat', authenticateToken, [
     }
 });
 
-app.get('/api/chat/purchases/:userId', authenticateToken, userIdValidator, async (req, res) => {
+app.get('/api/chat/purchases/:userId', authenticateToken, paramUserIdValidator, async (req, res) => {
     try {
-        if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+        const staffChats = req.user.isAdmin || req.user.isModerator;
+        if (req.user.id !== req.params.userId && !staffChats) {
             return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои чаты' });
         }
         const result = await pool.query(
@@ -1889,6 +1917,12 @@ app.get('/auth/vk/callback', (req, res) => {
 const telegram = require('./telegram');
 
 initDatabase().then(async (db) => {
+    setUserStaffFlagsLoader(async (userId) => {
+        const r = await pool.query('SELECT is_admin, is_moderator FROM users WHERE id = $1', [userId]);
+        if (!r.rows.length) return null;
+        return { isAdmin: !!r.rows[0].is_admin, isModerator: !!r.rows[0].is_moderator };
+    });
+
     // Инициализация Telegram
     await telegram.initTelegramTable(db);
     await telegram.loadChatIdCache(db);

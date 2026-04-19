@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN } = require('./config');
-const { authenticateToken, optionalAuthenticateToken, requireAdmin, requireStaff, requirePurchaseParticipant } = require('./auth');
+const { authenticateToken, optionalAuthenticateToken, requireAdmin, requireStaff, requirePurchaseParticipant, setUserStaffFlagsLoader } = require('./auth');
 const telegram = require('./telegram');
 
 const app = express();
@@ -348,6 +348,11 @@ if (dbMode === 'postgres') {
     // Пользователи - ID параметр
     const userIdValidator = [
         param('id').trim().notEmpty().withMessage('ID обязателен').isLength({ max: 100 }),
+        validate
+    ];
+
+    const paramUserIdValidator = [
+        param('userId').trim().notEmpty().withMessage('userId обязателен').isLength({ max: 100 }),
         validate
     ];
 
@@ -1603,8 +1608,9 @@ if (dbMode === 'postgres') {
     // БЕЗОПАСНОСТЬ: Покупки — только для авторизованного пользователя и только свои
     app.get('/api/users/:id/purchases', authenticateToken, userIdValidator, (req, res) => {
         try {
-            // Проверяем, что пользователь запрашивает свои покупки
-            if (req.user.id !== req.params.id && !req.user.isAdmin) {
+            // Покупки: только свои; админ и модератор — любые (модерация / поддержка)
+            const staffPurchases = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.id && !staffPurchases) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои покупки' });
             }
             
@@ -1634,9 +1640,25 @@ if (dbMode === 'postgres') {
         }
     });
 
-    // БЕЗОПАСНОСТЬ: Продажи — только для авторизованного пользователя и только свои
+    // Публичное число продаж (без списка покупок и id чатов)
+    app.get('/api/users/:id/sales-count', userIdValidator, (req, res) => {
+        try {
+            const cnt = db.exec('SELECT COUNT(*) FROM purchases WHERE sellerId = ?', [req.params.id]);
+            const n = cnt.length && cnt[0].values.length ? cnt[0].values[0][0] : 0;
+            res.json({ count: n });
+        } catch (error) {
+            console.error('Ошибка sales-count:', error.message);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+    });
+
+    // БЕЗОПАСНОСТЬ: Продажи — только для авторизованного пользователя и только свои (админ/модератор — любые)
     app.get('/api/users/:id/sales', authenticateToken, userIdValidator, (req, res) => {
         try {
+            const staffSales = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.id && !staffSales) {
+                return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои продажи' });
+            }
             console.log(`[SALES] Запрос продаж для sellerId: ${req.params.id}`);
             const result = db.exec(`
                 SELECT p.*, u.name as buyerName
@@ -3282,9 +3304,10 @@ if (dbMode === 'postgres') {
     });
 
     // GET /api/chat/previews/:userId — превью чатов (последнее сообщение для каждой покупки)
-    app.get('/api/chat/previews/:userId', authenticateToken, userIdValidator, (req, res) => {
+    app.get('/api/chat/previews/:userId', authenticateToken, paramUserIdValidator, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            const staffPreviews = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.userId && !staffPreviews) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои чаты' });
             }
 
@@ -3321,10 +3344,11 @@ if (dbMode === 'postgres') {
     });
 
     // БЕЗОПАСНОСТЬ: Список чатов — только для авторизованного пользователя
-    app.get('/api/chat/purchases/:userId', authenticateToken, userIdValidator, (req, res) => {
+    app.get('/api/chat/purchases/:userId', authenticateToken, paramUserIdValidator, (req, res) => {
         try {
-            // Проверяем, что пользователь запрашивает свои чаты
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            // Свои чаты; админ и модератор — любые
+            const staffChatPurchases = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.userId && !staffChatPurchases) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои чаты' });
             }
             
@@ -3389,9 +3413,10 @@ if (dbMode === 'postgres') {
     // ============================================
 
     // GET /api/notifications/:userId — с фильтрацией по типу
-    app.get('/api/notifications/:userId', authenticateToken, userIdValidator, (req, res) => {
+    app.get('/api/notifications/:userId', authenticateToken, paramUserIdValidator, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            const staffNotif = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.userId && !staffNotif) {
                 return res.status(403).json({ error: 'Доступ запрещён: вы можете просматривать только свои уведомления' });
             }
 
@@ -3497,9 +3522,10 @@ if (dbMode === 'postgres') {
     });
 
     // PATCH /api/notifications/:userId/read-all — отметить все как прочитанные
-    app.patch('/api/notifications/:userId/read-all', authenticateToken, userIdValidator, (req, res) => {
+    app.patch('/api/notifications/:userId/read-all', authenticateToken, paramUserIdValidator, (req, res) => {
         try {
-            if (req.user.id !== req.params.userId && !req.user.isAdmin) {
+            const staffNotifAll = req.user.isAdmin || req.user.isModerator;
+            if (req.user.id !== req.params.userId && !staffNotifAll) {
                 return res.status(403).json({ error: 'Доступ запрещён' });
             }
 
@@ -4171,6 +4197,17 @@ if (dbMode === 'postgres') {
     // Запуск сервера
     // ============================================
     initDatabase().then(() => {
+        setUserStaffFlagsLoader((userId) => {
+            try {
+                const result = db.exec('SELECT isAdmin, isModerator FROM users WHERE id = ?', [userId]);
+                if (!result.length || !result[0].values.length) return null;
+                const [isAdmin, isModerator] = result[0].values[0];
+                return { isAdmin: Boolean(isAdmin), isModerator: Boolean(isModerator) };
+            } catch {
+                return null;
+            }
+        });
+
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`Сервер запущен: http://localhost:${PORT}`);
             console.log(`API доступно: http://localhost:${PORT}/api`);

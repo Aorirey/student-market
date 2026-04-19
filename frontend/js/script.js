@@ -11,6 +11,9 @@ const API_URL = __devSplit
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
 
+/** Закрытие по клику на фон только если pointerdown был на фоне (не при выделении текста с отпусканием за пределами формы). */
+let authModalCloseFromBackdrop = false;
+
 function isStaffUser(u = currentUser) {
     return Boolean(u && (u.isAdmin || u.isModerator));
 }
@@ -962,6 +965,7 @@ async function register() {
         }
 
         // Сохраняем сессию
+        clearChatStateForSessionChange();
         currentUser = data;
         sessionStorage.setItem('currentUser', JSON.stringify(data));
 
@@ -1016,6 +1020,7 @@ async function login() {
             return;
         }
 
+        clearChatStateForSessionChange();
         currentUser = data;
         sessionStorage.setItem('currentUser', JSON.stringify(data));
 
@@ -1078,6 +1083,7 @@ async function loginWithVK() {
                     return;
                 }
 
+                clearChatStateForSessionChange();
                 currentUser = data;
                 sessionStorage.setItem('currentUser', JSON.stringify(data));
                 closeModal();
@@ -1095,6 +1101,7 @@ async function loginWithVK() {
 
 // Выход
 function logout() {
+    clearChatStateForSessionChange();
     currentUser = null;
     sessionStorage.removeItem('currentUser');
     checkAuth();
@@ -1110,8 +1117,9 @@ function openModal(type) {
 }
 
 function closeModal() {
+    authModalCloseFromBackdrop = false;
     const modal = document.getElementById('auth-modal');
-    modal.classList.remove('active');
+    if (modal) modal.classList.remove('active');
 }
 
 // ==================== УВЕДОМЛЕНИЯ ====================
@@ -1800,13 +1808,19 @@ async function openSellerPage(sellerId, sellerName, event) {
         const userResponse = await fetch(`${API_URL}/users/${sellerId}`, userOpts);
         const user = userResponse.ok ? await userResponse.json() : {};
 
-        // Продажи: только для авторизованных (API)
-        let sales = [];
-        if (currentUser) {
-            const salesResponse = await fetch(`${API_URL}/users/${sellerId}/sales`, { headers: authBearerHeaders() });
+        // Количество продаж: свои — полный список; чужой профиль — только публичный счётчик (без id покупок)
+        let soldCount = '—';
+        if (currentUser && String(sellerId) === String(currentUser.id)) {
+            const salesResponse = await fetch(`${API_URL}/users/${currentUser.id}/sales`, { headers: authBearerHeaders() });
             if (salesResponse.ok) {
                 const s = await salesResponse.json();
-                sales = Array.isArray(s) ? s : [];
+                soldCount = Array.isArray(s) ? s.length : '—';
+            }
+        } else {
+            const countRes = await fetch(`${API_URL}/users/${sellerId}/sales-count`);
+            if (countRes.ok) {
+                const j = await countRes.json();
+                soldCount = typeof j.count === 'number' ? j.count : '—';
             }
         }
 
@@ -1816,7 +1830,6 @@ async function openSellerPage(sellerId, sellerName, event) {
             : '--';
 
         const ratingEl = document.getElementById('seller-page-rating');
-        const soldCount = currentUser ? sales.length : '—';
         ratingEl.innerHTML = `Рейтинг: <strong>${escapeHTML(avgRating)} ⭐</strong> | Продано работ: <strong>${soldCount}</strong> | Товаров на сайте: <strong>${sellerProducts.length}</strong>`;
 
         const joinedEl = document.getElementById('seller-page-joined');
@@ -3786,6 +3799,10 @@ async function loadChatMessages() {
         const raw = await response.json();
         if (!response.ok) {
             console.error('Ошибка загрузки сообщений:', raw);
+            if (response.status === 403 || response.status === 404) {
+                showToast('Информация', (raw && raw.error) || 'Нет доступа к этому чату', 'info');
+                closeChatWindow();
+            }
             return;
         }
         const messages = Array.isArray(raw) ? raw : (raw.messages || []);
@@ -3836,10 +3853,30 @@ function closeChatWindow() {
     currentChatPurchaseId = null;
     const cap = document.getElementById('chat-purchase-actions');
     if (cap) cap.innerHTML = '';
-    document.getElementById('chat-window').style.display = 'none';
-    document.getElementById('chat-list').style.display = 'block';
+    const messagesContainer = document.getElementById('chat-messages');
+    if (messagesContainer) messagesContainer.innerHTML = '';
+    const chatWin = document.getElementById('chat-window');
+    const chatList = document.getElementById('chat-list');
+    if (chatWin) chatWin.style.display = 'none';
+    if (chatList) chatList.style.display = 'block';
+    const chatWithName = document.getElementById('chat-with-name');
+    if (chatWithName) chatWithName.textContent = '';
     selectedFileForChat = null;
     updateFilePreview();
+}
+
+/** Сброс UI чатов при смене аккаунта / выходе (чаты только текущего пользователя; админ/мод перезагрузят модераторские чаты сами). */
+function clearChatStateForSessionChange() {
+    closeChatWindow();
+    const chatsListContent = document.getElementById('chats-list-content');
+    if (chatsListContent) chatsListContent.innerHTML = '';
+    stopAdminChatMessagesPoll(true);
+    const admMsg = document.getElementById('admin-chats-messages');
+    if (admMsg) admMsg.innerHTML = '';
+    const admHead = document.getElementById('admin-chats-thread-head');
+    if (admHead) admHead.textContent = '';
+    const admList = document.getElementById('admin-chats-conversations-list');
+    if (admList) admList.innerHTML = '';
 }
 
 // Открыть чат из уведомления
@@ -4469,12 +4506,27 @@ function setupEventListeners() {
         }
     }, true);
 
-    // Закрытие модалки при клике на фон
+    const authModalEl = document.getElementById('auth-modal');
+    if (authModalEl) {
+        authModalEl.addEventListener(
+            'pointerdown',
+            (event) => {
+                if (!authModalEl.classList.contains('active')) return;
+                authModalCloseFromBackdrop = event.target === authModalEl;
+            },
+            true
+        );
+    }
+
+    // Закрытие модалки только при полноценном клике по фону (не при отпускании кнопки после выделения из формы)
     document.addEventListener('click', function(event) {
         const authModal = document.getElementById('auth-modal');
-        if (event.target === authModal) {
-            closeModal();
+        if (authModal && authModal.classList.contains('active')) {
+            if (event.target === authModal && authModalCloseFromBackdrop) {
+                closeModal();
+            }
         }
+        authModalCloseFromBackdrop = false;
     });
 
     // Закрытие уведомлений при клике вне
@@ -4629,6 +4681,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 // Сохраняем сессию
+                clearChatStateForSessionChange();
                 currentUser = data;
                 sessionStorage.setItem('currentUser', JSON.stringify(data));
 
@@ -4695,6 +4748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 // Сохраняем сессию
+                clearChatStateForSessionChange();
                 currentUser = data;
                 sessionStorage.setItem('currentUser', JSON.stringify(data));
 
