@@ -1490,7 +1490,10 @@ app.get('/api/support/tickets', authenticateToken, requireStaff, async (req, res
 app.get('/api/support/tickets/:id', authenticateToken, [param('id').notEmpty().isInt({ min: 1 }), validate], async (req, res) => {
     try {
         const tRes = await pool.query(
-            'SELECT id, user_id, subject, category, body, status, created_at, updated_at FROM support_tickets WHERE id = $1',
+            `SELECT t.id, t.user_id, t.subject, t.category, t.body, t.status, t.created_at, t.updated_at, u.name AS user_name
+             FROM support_tickets t
+             LEFT JOIN users u ON t.user_id = u.id
+             WHERE t.id = $1`,
             [req.params.id]
         );
         if (tRes.rows.length === 0) return res.status(404).json({ error: 'Обращение не найдено' });
@@ -1505,6 +1508,7 @@ app.get('/api/support/tickets/:id', authenticateToken, [param('id').notEmpty().i
             ticket: {
                 id: tr.id,
                 userId: sanitizeHTML(tr.user_id),
+                userName: sanitizeHTML(tr.user_name || ''),
                 subject: sanitizeHTML(tr.subject),
                 category: sanitizeHTML(tr.category),
                 body: sanitizeHTML(tr.body),

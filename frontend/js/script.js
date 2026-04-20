@@ -3090,16 +3090,21 @@ async function selectAdminSupportTicket(ticketId) {
         if (headEl) {
             headEl.textContent = `#${ticket.id} · ${ticket.subject} · ${ticket.status}`;
         }
+        const senderDisplayName = (ticket && ticket.userName ? String(ticket.userName).trim() : '') || 'Пользователь';
         if (msgEl) {
             msgEl.innerHTML = '';
             const intro = document.createElement('div');
             intro.className = 'admin-chat-msg';
+            const introSender = document.createElement('div');
+            introSender.className = 'admin-chat-msg-sender';
+            introSender.textContent = `Отправитель: ${senderDisplayName}`;
             const introText = document.createElement('div');
             introText.className = 'admin-chat-msg-text';
             introText.textContent = ticket.body || '';
             const introMeta = document.createElement('div');
             introMeta.className = 'admin-chat-msg-meta';
             introMeta.textContent = 'Текст обращения';
+            intro.appendChild(introSender);
             intro.appendChild(introText);
             intro.appendChild(introMeta);
             msgEl.appendChild(intro);
@@ -3108,7 +3113,7 @@ async function selectAdminSupportTicket(ticketId) {
                 w.className = 'admin-chat-msg';
                 const who = document.createElement('div');
                 who.className = 'admin-chat-msg-sender';
-                who.textContent = m.isStaff ? 'Поддержка' : 'Пользователь';
+                who.textContent = m.isStaff ? 'Поддержка' : senderDisplayName;
                 const tx = document.createElement('div');
                 tx.className = 'admin-chat-msg-text';
                 tx.textContent = m.message || '';

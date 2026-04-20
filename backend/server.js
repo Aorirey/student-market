@@ -2996,7 +2996,13 @@ if (dbMode === 'postgres') {
 
     app.get('/api/support/tickets/:id', authenticateToken, [param('id').notEmpty().isInt({ min: 1 }).withMessage('Некорректный ID'), validate], (req, res) => {
         try {
-            const tRes = db.exec('SELECT id, userId, subject, category, body, status, createdAt, updatedAt FROM support_tickets WHERE id = ?', [req.params.id]);
+            const tRes = db.exec(
+                `SELECT t.id, t.userId, t.subject, t.category, t.body, t.status, t.createdAt, t.updatedAt, u.name AS userName
+                 FROM support_tickets t
+                 LEFT JOIN users u ON t.userId = u.id
+                 WHERE t.id = ?`,
+                [req.params.id]
+            );
             if (!tRes.length || !tRes[0].values.length) {
                 return res.status(404).json({ error: 'Обращение не найдено' });
             }
@@ -3014,10 +3020,15 @@ if (dbMode === 'postgres') {
                 body: sanitizeHTML(tr[4]),
                 status: sanitizeHTML(tr[5]),
                 createdAt: tr[6],
-                updatedAt: tr[7]
+                updatedAt: tr[7],
+                userName: sanitizeHTML(tr[8] || '')
             };
             const mRes = db.exec(
-                'SELECT id, authorId, message, isStaff, createdAt FROM support_ticket_messages WHERE ticketId = ? ORDER BY createdAt ASC',
+                `SELECT m.id, m.authorId, m.message, m.isStaff, m.createdAt, u.name AS authorName
+                 FROM support_ticket_messages m
+                 LEFT JOIN users u ON m.authorId = u.id
+                 WHERE m.ticketId = ?
+                 ORDER BY m.createdAt ASC`,
                 [req.params.id]
             );
             const messages = mRes.length && mRes[0].values.length
@@ -3026,7 +3037,8 @@ if (dbMode === 'postgres') {
                     authorId: sanitizeHTML(row[1]),
                     message: sanitizeHTML(row[2]),
                     isStaff: Boolean(row[3]),
-                    createdAt: row[4]
+                    createdAt: row[4],
+                    authorName: sanitizeHTML(row[5] || '')
                 }))
                 : [];
             res.json({ ticket, messages });
