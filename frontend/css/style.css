@@ -3240,6 +3240,12 @@ input[type="number"] {
         align-items: stretch;
     }
 
+    .search-bar-wrapper {
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
+    }
+
     /* Select на мобильных */
     select:not(.ui-custom-select__native) {
         min-width: unset;
