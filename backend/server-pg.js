@@ -15,7 +15,6 @@ const { optionalAuthenticateToken, authenticateToken, requireStaff, setUserStaff
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 // ============================================
 // НАСТРОЙКА PROXY (для Render/Heroku и др.)
 // ============================================
@@ -109,6 +108,7 @@ app.use('/css', express.static(path.join(FRONTEND, 'css')));
 app.use('/js', express.static(path.join(FRONTEND, 'js')));
 app.use('/fonts', express.static(path.join(FRONTEND, 'fonts')));
 app.use('/icons', express.static(path.join(FRONTEND, 'icons')));
+app.use('/legal', express.static(path.join(FRONTEND, 'legal')));
 app.use('/icons', express.static(path.join(ROOT, 'icons')));
 
 // Главная страница
@@ -147,6 +147,55 @@ function sanitizeHTML(str) {
         '/': '&#x2F;'
     };
     return String(str).replace(/[&<>"'/]/g, char => map[char]);
+}
+
+const LEGAL_DOC_VERSIONS = {
+    offer: process.env.LEGAL_OFFER_VERSION || '2026-04-20',
+    privacy: process.env.LEGAL_PRIVACY_VERSION || '2026-04-20',
+    personal_data_consent: process.env.LEGAL_PDN_CONSENT_VERSION || '2026-04-20',
+    terms: process.env.LEGAL_TERMS_VERSION || '2026-04-20'
+};
+
+function isConsentAccepted(value) {
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function normalizeConsentPayload(payload) {
+    const safe = payload || {};
+    return {
+        offerAccepted: isConsentAccepted(safe.offerAccepted),
+        privacyAccepted: isConsentAccepted(safe.privacyAccepted),
+        personalDataAccepted: isConsentAccepted(safe.personalDataAccepted)
+    };
+}
+
+function getClientIp(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+        return forwarded.split(',')[0].trim().slice(0, 64);
+    }
+    return String(req.ip || req.connection?.remoteAddress || '').slice(0, 64);
+}
+
+async function recordConsentFactsPg(poolConn, { userId, consents, ip, userAgent, source }) {
+    if (!consents.offerAccepted || !consents.privacyAccepted || !consents.personalDataAccepted) {
+        return;
+    }
+    const now = new Date().toISOString();
+    const acceptedDocs = [
+        { docType: 'offer', docVersion: LEGAL_DOC_VERSIONS.offer },
+        { docType: 'terms', docVersion: LEGAL_DOC_VERSIONS.terms },
+        { docType: 'privacy', docVersion: LEGAL_DOC_VERSIONS.privacy },
+        { docType: 'personal_data_consent', docVersion: LEGAL_DOC_VERSIONS.personal_data_consent }
+    ];
+    for (const item of acceptedDocs) {
+        await poolConn.query(
+            `INSERT INTO legal_consent_logs
+                (user_id, doc_type, doc_version, consented_at, ip_address, user_agent, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [userId, item.docType, item.docVersion, now, ip || '', String(userAgent || '').slice(0, 500), source || 'auth_register']
+        );
+    }
 }
 
 // Helper: автоматическое создание уведомлений + Telegram
@@ -327,6 +376,16 @@ async function initDatabase() {
             message TEXT NOT NULL,
             is_staff BOOLEAN DEFAULT false,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS legal_consent_logs (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            doc_type TEXT NOT NULL,
+            doc_version TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'auth_register',
+            consented_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address TEXT,
+            user_agent TEXT
         )`);
 
         const adminExists = await pool.query("SELECT * FROM users WHERE email = $1", ['admin@studentmarket.ru']);
@@ -678,7 +737,7 @@ app.get('/api/config/vk', (req, res) => {
 // OAuth callback — обмен code на token (VK ID SDK)
 app.post('/api/auth/vk', async (req, res) => {
     try {
-        const { code, device_id } = req.body;
+        const { code, device_id, consents } = req.body;
         if (!code) {
             return res.status(400).json({ error: 'Код авторизации не передан' });
         }
@@ -757,6 +816,13 @@ app.post('/api/auth/vk', async (req, res) => {
                  RETURNING id, name, email, balance, is_admin, is_blocked, photo_url, login`,
                 [newId, sanitizeHTML(fullName), `${vkId}@vk.user`, hashedPassword, 10000, false, false, photoUrl, login, vkId]
             );
+            await recordConsentFactsPg(pool, {
+                userId: newId,
+                consents: normalizeConsentPayload(consents),
+                ip: getClientIp(req),
+                userAgent: req.get('user-agent') || '',
+                source: '/api/auth/vk'
+            });
             console.log(`[VK] Создан новый пользователь: ${fullName}`);
         } else {
             // Обновляем имя и фото
@@ -807,7 +873,10 @@ app.post('/api/auth/vk', async (req, res) => {
 app.post('/api/auth/register', [
     body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Ник: 2-50 символов'),
     body('login').trim().isLength({ min: 3, max: 20 }).withMessage('Логин: 3-20 символов'),
-    body('password').isLength({ min: 6 }).withMessage('Пароль: мин. 6 символов')
+    body('password').isLength({ min: 6 }).withMessage('Пароль: мин. 6 символов'),
+    body('consents.offerAccepted').optional().isBoolean().withMessage('Некорректное значение согласия по оферте'),
+    body('consents.privacyAccepted').optional().isBoolean().withMessage('Некорректное значение согласия по политике'),
+    body('consents.personalDataAccepted').optional().isBoolean().withMessage('Некорректное значение согласия на ПДн')
 ], async (req, res) => {
     try {
         const errors = validationResult(req);
@@ -815,7 +884,11 @@ app.post('/api/auth/register', [
             return res.status(400).json({ error: errors.array()[0].msg });
         }
 
-        const { name, login, password } = req.body;
+        const { name, login, password, consents } = req.body;
+        const consentPayload = normalizeConsentPayload(consents);
+        if (!consentPayload.offerAccepted || !consentPayload.privacyAccepted || !consentPayload.personalDataAccepted) {
+            return res.status(400).json({ error: 'Для регистрации необходимо принять оферту, соглашение и дать согласие на обработку ПДн' });
+        }
 
         // Валидация логина (только латиница, цифры, _)
         const loginRegex = /^[a-zA-Z0-9_]+$/;
@@ -841,6 +914,13 @@ app.post('/api/auth/register', [
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [newId, sanitizeHTML(name), `${login}@studentmarket.local`, hashedPassword, 10000, false, false, null, login.toLowerCase()]
         );
+        await recordConsentFactsPg(pool, {
+            userId: newId,
+            consents: consentPayload,
+            ip: getClientIp(req),
+            userAgent: req.get('user-agent') || '',
+            source: '/api/auth/register'
+        });
 
         console.log(`[AUTH] Регистрация успешна: ${login}`);
         const tokenPayload = {
