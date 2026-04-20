@@ -953,11 +953,18 @@
                         <input type="password" id="register-password" placeholder="Пароль (мин. 6 символов)" required minlength="6" aria-label="Пароль">
                     </div>
                     <div class="form-group consent-group">
-                        <p class="consent-text">
-                            Регистрируясь или входя, вы соглашаетесь с
-                            <a href="#" data-action="open-privacy-policy-from-register" class="privacy-link">Политикой конфиденциальности</a>
-                            и даете согласие на обработку персональных данных
-                        </p>
+                        <label style="display: flex; gap: 0.5rem; align-items: flex-start; font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: 0.4rem;">
+                            <input type="checkbox" id="register-consent-offer" required style="margin-top: 0.2rem;">
+                            <span>Принимаю <a href="/legal/offer.html" target="_blank" rel="noopener" class="privacy-link">Публичную оферту</a> и <a href="/legal/terms.html" target="_blank" rel="noopener" class="privacy-link">Пользовательское соглашение</a></span>
+                        </label>
+                        <label style="display: flex; gap: 0.5rem; align-items: flex-start; font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: 0.4rem;">
+                            <input type="checkbox" id="register-consent-privacy" required style="margin-top: 0.2rem;">
+                            <span>Ознакомлен(а) с <a href="/legal/privacy.html" target="_blank" rel="noopener" class="privacy-link">Политикой конфиденциальности</a></span>
+                        </label>
+                        <label style="display: flex; gap: 0.5rem; align-items: flex-start; font-size: var(--fs-sm); color: var(--text-secondary);">
+                            <input type="checkbox" id="register-consent-pdn" required style="margin-top: 0.2rem;">
+                            <span>Даю <a href="/legal/consent-personal-data.html" target="_blank" rel="noopener" class="privacy-link">Согласие на обработку персональных данных</a></span>
+                        </label>
                     </div>
                     <button type="submit" class="btn-signup" style="width: 100%; margin-bottom: 0.75rem;">Зарегистрироваться</button>
                 </form>
@@ -1031,7 +1038,12 @@
          ═══════════════════════════════════════ -->
     <footer role="contentinfo">
         <p>&copy; 2026 StudentMarket. Все права защищены.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:center; align-items:center;">
         <button class="btn-privacy-policy" data-action="open-privacy-policy">🔒 Политика конфиденциальности</button>
+        <a href="/legal/offer.html" target="_blank" rel="noopener">Публичная оферта</a>
+        <a href="/legal/terms.html" target="_blank" rel="noopener">Пользовательское соглашение</a>
+        <a href="/legal/consent-personal-data.html" target="_blank" rel="noopener">Согласие на ПДн</a>
+        </div>
     </footer>
 
     <!-- Модальное окно политики конфиденциальности -->

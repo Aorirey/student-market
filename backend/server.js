@@ -115,6 +115,7 @@ app.use('/css', express.static(path.join(FRONTEND, 'css')));
 app.use('/js', express.static(path.join(FRONTEND, 'js')));
 app.use('/fonts', express.static(path.join(FRONTEND, 'fonts')));
 app.use('/icons', express.static(path.join(FRONTEND, 'icons')));
+app.use('/legal', express.static(path.join(FRONTEND, 'legal')));
 app.use('/icons', express.static(path.join(ROOT, 'icons')));
 
 // Главная страница
@@ -154,6 +155,99 @@ function sanitizeHTML(str) {
         '/': '&#x2F;'
     };
     return String(str).replace(/[&<>"'/]/g, char => map[char]);
+}
+
+const LEGAL_DOC_VERSIONS = Object.freeze({
+    offer: process.env.LEGAL_OFFER_VERSION || '2026-04-20',
+    terms: process.env.LEGAL_TERMS_VERSION || '2026-04-20',
+    privacy: process.env.LEGAL_PRIVACY_VERSION || '2026-04-20',
+    personalData: process.env.LEGAL_PDN_CONSENT_VERSION || '2026-04-20'
+});
+
+function isConsentAccepted(value) {
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function validateRequiredRegistrationConsents(payload) {
+    const safePayload = payload || {};
+    const offerAccepted = isConsentAccepted(
+        safePayload.consentOffer !== undefined ? safePayload.consentOffer : safePayload.offerAccepted
+    );
+    const privacyAccepted = isConsentAccepted(
+        safePayload.consentPrivacy !== undefined ? safePayload.consentPrivacy : safePayload.privacyAccepted
+    );
+    const pdnAccepted = isConsentAccepted(
+        safePayload.consentPersonalData !== undefined
+            ? safePayload.consentPersonalData
+            : (safePayload.personalDataAccepted !== undefined ? safePayload.personalDataAccepted : safePayload.pdnAccepted)
+    );
+    return {
+        offerAccepted,
+        privacyAccepted,
+        pdnAccepted,
+        allAccepted: offerAccepted && privacyAccepted && pdnAccepted
+    };
+}
+
+function buildConsentPayloadForStorage(payload) {
+    const normalized = validateRequiredRegistrationConsents(payload || {});
+    return {
+        consentOffer: normalized.offerAccepted,
+        consentPrivacy: normalized.privacyAccepted,
+        consentPersonalData: normalized.pdnAccepted
+    };
+}
+
+function getClientIp(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+        return forwarded.split(',')[0].trim().slice(0, 64);
+    }
+    return String(req.ip || req.connection?.remoteAddress || '').slice(0, 64);
+}
+
+function getClientUserAgent(req) {
+    return String(req.headers['user-agent'] || '').slice(0, 512);
+}
+
+function hasRequiredLegalConsents(legalConsents) {
+    const check = validateRequiredRegistrationConsents(legalConsents || {});
+    return check.allAccepted;
+}
+
+function saveLegalConsent(dbConn, { userId, legalConsents, source = 'auth_register', ip, userAgent }) {
+    if (!dbConn || !userId || !legalConsents) return;
+    const check = validateRequiredRegistrationConsents(legalConsents);
+    if (!check.allAccepted) return;
+
+    const consentedAt = new Date().toISOString();
+    const safeIp = String(ip || '').slice(0, 64);
+    const safeUa = String(userAgent || '').slice(0, 512);
+    const rows = [
+        ['offer', LEGAL_DOC_VERSIONS.offer],
+        ['terms', LEGAL_DOC_VERSIONS.terms],
+        ['privacy', LEGAL_DOC_VERSIONS.privacy],
+        ['personal_data_consent', LEGAL_DOC_VERSIONS.personalData]
+    ];
+
+    rows.forEach(([docType, docVersion]) => {
+        dbConn.run(
+            `INSERT INTO legal_consent_logs
+                (userId, docType, docVersion, source, consentedAt, ipAddress, userAgent)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [userId, docType, docVersion, source, consentedAt, safeIp, safeUa]
+        );
+    });
+}
+
+function appendLegalConsentLogsSqlite(dbConn, req, userId, legalConsents, source = 'auth_register') {
+    saveLegalConsent(dbConn, {
+        userId,
+        legalConsents,
+        source,
+        ip: getClientIp(req),
+        userAgent: getClientUserAgent(req)
+    });
 }
 
 // Декодирование HTML-сущностей для уведомлений
@@ -255,6 +349,16 @@ if (dbMode === 'postgres') {
         db.run(`CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, isRead INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS support_tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, subject TEXT NOT NULL, category TEXT NOT NULL, body TEXT NOT NULL, status TEXT DEFAULT 'open', createdAt TEXT DEFAULT CURRENT_TIMESTAMP, updatedAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
         db.run(`CREATE TABLE IF NOT EXISTS support_ticket_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, ticketId INTEGER NOT NULL, authorId TEXT NOT NULL, message TEXT NOT NULL, isStaff INTEGER DEFAULT 0, createdAt TEXT DEFAULT CURRENT_TIMESTAMP)`);
+        db.run(`CREATE TABLE IF NOT EXISTS legal_consent_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT NOT NULL,
+            docType TEXT NOT NULL,
+            docVersion TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'auth_register',
+            consentedAt TEXT NOT NULL,
+            ipAddress TEXT,
+            userAgent TEXT
+        )`);
 
         // Создание администратора по умолчанию
         const adminExists = db.exec("SELECT * FROM users WHERE email = 'admin@studentmarket.ru'");
@@ -514,10 +618,15 @@ if (dbMode === 'postgres') {
     // Регистрация через форму (name, login, password)
     app.post('/api/auth/register', async (req, res) => {
         try {
-            const { name, login, password } = req.body;
+            const { name, login, password, legalConsents, consents } = req.body;
 
             if (!name || !login || !password) {
                 return res.status(400).json({ error: 'Заполните все поля!' });
+            }
+
+            const normalizedLegalConsents = validateRequiredRegistrationConsents(legalConsents || consents || {});
+            if (!normalizedLegalConsents.allAccepted) {
+                return res.status(400).json({ error: 'Для регистрации необходимо принять обязательные юридические документы' });
             }
 
             // Проверка логина
@@ -543,6 +652,11 @@ if (dbMode === 'postgres') {
 
             db.run("INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, login) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [id, sanitizeHTML(name), `${login.toLowerCase()}@studentmarket.ru`, hashedPassword, 0, 0, 0, login.toLowerCase()]);
+            appendLegalConsentLogsSqlite(db, req, id, {
+                consentOffer: normalizedLegalConsents.offerAccepted,
+                consentPrivacy: normalizedLegalConsents.privacyAccepted,
+                consentPersonalData: normalizedLegalConsents.pdnAccepted
+            }, 'auth_register');
             saveDatabase();
 
             console.log(`[AUTH] Зарегистрирован новый пользователь: ${login}`);
@@ -1097,7 +1211,7 @@ if (dbMode === 'postgres') {
 
     app.post('/api/auth/vk', async (req, res) => {
         try {
-            const { code } = req.body;
+            const { code, legalConsents, consents } = req.body;
             if (!code) {
                 return res.status(400).json({ error: 'Код авторизации не передан' });
             }
@@ -1158,6 +1272,13 @@ if (dbMode === 'postgres') {
                 const login = `vk_${user_id}`;
                 db.run(`INSERT INTO users (id, name, email, password, balance, isAdmin, isBlocked, photo_url, login, vk_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [newId, sanitizeHTML(fullName), `${user_id}@vk.user`, hashedPassword, 0, 0, 0, photoUrl, login, user_id]);
+                saveLegalConsent(db, {
+                    userId: newId,
+                    legalConsents: legalConsents || consents,
+                    source: 'auth.vk',
+                    ip: req.ip,
+                    userAgent: req.get('user-agent')
+                });
                 saveDatabase();
                 result = db.exec(
                     "SELECT id, name, email, balance, isAdmin, isBlocked, isModerator, photo_url, login, vk_id FROM users WHERE id = ?",

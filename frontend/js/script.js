@@ -10,6 +10,20 @@ const API_URL = __devSplit
 
 // Текущий пользователь (хранится в sessionStorage)
 let currentUser = null;
+function getRegistrationConsents() {
+    const offer = document.getElementById('register-consent-offer');
+    const privacy = document.getElementById('register-consent-privacy');
+    const pdn = document.getElementById('register-consent-pdn');
+    return {
+        offerAccepted: Boolean(offer && offer.checked),
+        privacyAccepted: Boolean(privacy && privacy.checked),
+        personalDataAccepted: Boolean(pdn && pdn.checked)
+    };
+}
+
+function hasAllRegistrationConsents(consents) {
+    return Boolean(consents.offerAccepted && consents.privacyAccepted && consents.personalDataAccepted);
+}
 
 /** Закрытие по клику на фон только если pointerdown был на фоне (не при выделении текста с отпусканием за пределами формы). */
 let authModalCloseFromBackdrop = false;
@@ -927,6 +941,7 @@ async function register() {
     const name = document.getElementById('register-name').value.trim();
     const loginValue = document.getElementById('register-login').value.trim();
     const password = document.getElementById('register-password').value;
+    const consents = getRegistrationConsents();
     const errorEl = document.getElementById('register-error-message');
 
     // Сбрасываем ошибку
@@ -950,11 +965,16 @@ async function register() {
         return;
     }
 
+    if (!hasAllRegistrationConsents(consents)) {
+        showAuthError(errorEl, 'Для регистрации необходимо принять оферту, соглашение и дать согласие на обработку ПДн');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, login: loginValue, password })
+            body: JSON.stringify({ name, login: loginValue, password, consents })
         });
 
         const data = await response.json();
@@ -4692,6 +4712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const name = document.getElementById('register-name').value;
             const login = document.getElementById('register-login').value;
             const password = document.getElementById('register-password').value;
+            const consents = getRegistrationConsents();
 
             if (!name || !login || !password) {
                 showToast('Ошибка', 'Заполните все поля!', 'error');
@@ -4717,11 +4738,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
+            if (!hasAllRegistrationConsents(consents)) {
+                showToast('Ошибка', 'Для регистрации необходимо принять оферту, соглашение и дать согласие на обработку ПДн', 'error');
+                return;
+            }
+
             try {
                 const response = await fetch(`${API_URL}/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, login, password })
+                    body: JSON.stringify({ name, login, password, consents })
                 });
 
                 const data = await response.json();
