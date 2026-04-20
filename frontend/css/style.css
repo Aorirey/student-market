@@ -3228,6 +3228,24 @@ input[type="number"] {
         flex-direction: column;
         text-align: center;
     }
+
+    /* Поиск в фильтрах: не даём flex-элементу раздуваться по высоте */
+    .filter-section {
+        align-items: stretch;
+    }
+
+    .search-bar-wrapper {
+        flex: none;
+        width: 100%;
+        min-width: 0;
+        height: 3rem;
+    }
+
+    .filter-section input.search-input {
+        height: 100%;
+        padding-top: 0.7rem;
+        padding-bottom: 0.7rem;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3241,9 +3259,10 @@ input[type="number"] {
     }
 
     .search-bar-wrapper {
-        flex: 0 0 auto;
+        flex: none;
         width: 100%;
         min-width: 0;
+        height: 2.85rem;
     }
 
     /* Select на мобильных */
